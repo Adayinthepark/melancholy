@@ -29,7 +29,10 @@ test("owner login, channel creation, queued messages, cancellation, and responsi
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/");
+  await page.goto("/legacy");
+  await page
+    .getByRole("button", { name: "Use workspace key", exact: true })
+    .click();
   await page.getByLabel("Workspace key").fill(key);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("button", { name: "Add channel", exact: true }).click();

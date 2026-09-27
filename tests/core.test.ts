@@ -137,7 +137,9 @@ describe("workspace access", () => {
     const signedIn = attempts.find((r) => r.status === 200)!;
     expect(signedIn.headers.get("Set-Cookie")).toContain("HttpOnly");
     const expired = "c".repeat(64);
-    await env.DB.prepare("INSERT INTO login_tickets VALUES (?,?)")
+    await env.DB.prepare(
+      "INSERT INTO login_tickets(token_hash,expires_at) VALUES (?,?)",
+    )
       .bind(await hash(expired), Date.now() - 1)
       .run();
     expect((await redeem(expired)).status).toBe(401);

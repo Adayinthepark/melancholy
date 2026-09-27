@@ -1,7 +1,9 @@
 # melancholy
 
 Read `README.md` and `docs/architecture.md` before changing runtime behavior.
-Product scope: conversations with Codex and Claude Code on the owner's server.
+Product scope: a minimal Slack-style workspace for people and agents, including
+public/private channels, direct/group messages, threads, mentions, reactions,
+editing/deletion, unread counts, files, search and scoped bot integrations.
 
 - Frontend: vinext App Router and the installed shadcn/ui primitives.
 - Hosting: Cloudflare Workers, SQLite Durable Objects, D1 and private R2.

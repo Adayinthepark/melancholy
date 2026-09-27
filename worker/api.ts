@@ -11,6 +11,8 @@ import {
   sessionCookie,
 } from "./auth";
 import type { Attachment, Runtime, Server, Thread } from "../lib/protocol";
+import { handleChat, chatFile } from "./team-api";
+import { verifyPassword, requireRoom } from "./team-auth";
 
 class HttpError extends Error {
   constructor(
@@ -120,8 +122,15 @@ async function route(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
+  if (
+    path.startsWith("/api/chat/") ||
+    path.startsWith("/api/v1/") ||
+    path.startsWith("/api/hooks/") ||
+    path === "/api/join"
+  )
+    return handleChat(request);
   if (path === "/api/health" && method === "GET")
-    return json({ ok: true, version: "0.1.0" });
+    return json({ ok: true, version: "0.2.0" });
 
   if (path === "/api/connector" && method === "GET") {
     const identity = await connectorIdentity(request);
@@ -134,19 +143,45 @@ async function route(request: Request): Promise<Response> {
   }
   if (path === "/api/login" && method === "POST") {
     if (!checkOrigin(request)) throw new HttpError(403, "Origin not allowed.");
+    const address = await hash(
+      request.headers.get("CF-Connecting-IP") || "local",
+    );
+    if (!(await env.INBOXES.getByName("login:" + address).allowLogin()))
+      throw new HttpError(
+        429,
+        "Too many sign-in attempts. Try again in a minute.",
+      );
     const input = z
-      .object({ key: z.string().min(1).max(256) })
+      .object({
+        key: z.string().min(1).max(256).optional(),
+        handle: z.string().min(1).max(40).optional(),
+        password: z.string().min(1).max(256).optional(),
+      })
       .parse(await body(request));
-    if (!(await keyMatches(input.key)))
-      throw new HttpError(401, "Invalid workspace key.");
+    let personId = "owner";
+    const member = input.handle
+      ? await env.DB.prepare(
+          "SELECT id,password_hash FROM people WHERE handle=? AND kind='human' AND active=1",
+        )
+          .bind(input.handle.toLowerCase())
+          .first<{ id: string; password_hash: string | null }>()
+      : null;
+    const valid = input.key
+      ? await keyMatches(input.key)
+      : !!(
+          member?.password_hash &&
+          input.password &&
+          (await verifyPassword(input.password, member.password_hash))
+        );
+    if (!valid) throw new HttpError(401, "Invalid sign-in credentials.");
+    if (!input.key && member) personId = member.id;
     const token = secret();
     const now = Date.now();
     await env.DB.batch([
       env.DB.prepare("DELETE FROM sessions WHERE expires_at<=?").bind(now),
-      env.DB.prepare("INSERT INTO sessions VALUES (?,?)").bind(
-        await hash(token),
-        now + SESSION_AGE * 1000,
-      ),
+      env.DB.prepare(
+        "INSERT INTO sessions(token_hash,expires_at,person_id) VALUES (?,?,?)",
+      ).bind(await hash(token), now + SESSION_AGE * 1000, personId),
     ]);
     return json({ ok: true }, 200, {
       "Set-Cookie": sessionCookie(request, token),
@@ -158,18 +193,20 @@ async function route(request: Request): Promise<Response> {
       .object({ ticket: z.string().length(64) })
       .parse(await body(request));
     const used = await env.DB.prepare(
-      "DELETE FROM login_tickets WHERE token_hash=? AND expires_at>? RETURNING token_hash",
+      "DELETE FROM login_tickets WHERE token_hash=? AND expires_at>? AND person_id IN (SELECT id FROM people WHERE active=1) RETURNING person_id",
     )
       .bind(await hash(input.ticket), Date.now())
-      .first();
+      .first<{ person_id: string }>();
     if (!used)
       throw new HttpError(
         401,
         "This sign-in link has expired or was already used.",
       );
     const token = secret();
-    await env.DB.prepare("INSERT INTO sessions VALUES (?,?)")
-      .bind(await hash(token), Date.now() + SESSION_AGE * 1000)
+    await env.DB.prepare(
+      "INSERT INTO sessions(token_hash,expires_at,person_id) VALUES (?,?,?)",
+    )
+      .bind(await hash(token), Date.now() + SESSION_AGE * 1000, used.person_id)
       .run();
     return json({ ok: true }, 200, {
       "Set-Cookie": sessionCookie(request, token),
@@ -179,11 +216,17 @@ async function route(request: Request): Promise<Response> {
   const fileId = path.match(/^\/api\/files\/([a-f0-9-]+)$/)?.[1];
   const session = await authenticate(request);
   if (fileId && method === "GET") {
+    if (
+      await env.DB.prepare("SELECT id FROM chat_files WHERE id=?")
+        .bind(fileId)
+        .first()
+    )
+      return chatFile(request, fileId);
     const file = await env.DB.prepare("SELECT * FROM files WHERE id=?")
       .bind(fileId)
       .first<Attachment & { thread_id: string }>();
     if (!file) throw new HttpError(404, "File not found.");
-    if (!session) {
+    if (!session || session.role !== "owner") {
       const identity = await connectorIdentity(request);
       if (!identity || (await thread(file.thread_id)).server_id !== identity.id)
         throw new HttpError(401, "Sign in to download this file.");
@@ -223,12 +266,13 @@ async function route(request: Request): Promise<Response> {
       await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?")
         .bind(await hash(token))
         .run();
-    // This release has one owner identity; close its live browser sessions on sign-out.
+    // New workspace sockets are scoped to this exact browser session.
+    await env.INBOXES.getByName(session.id).closeSession(session.sessionHash!);
     const rooms = await env.DB.prepare(
-      "SELECT id FROM threads WHERE archived=0",
+      "SELECT id FROM threads WHERE archived=0 AND NOT EXISTS(SELECT 1 FROM agent_threads a WHERE a.thread_id=threads.id)",
     ).all<{ id: string }>();
     await Promise.all(
-      rooms.results.map((r) =>
+      (session.role === "owner" ? rooms.results : []).map((r) =>
         env.CONVERSATIONS.getByName(r.id).closeSessions(),
       ),
     );
@@ -239,16 +283,20 @@ async function route(request: Request): Promise<Response> {
   if (path === "/api/login-links" && method === "POST") {
     const ticket = secret();
     const expires = Date.now() + 86400000;
-    await env.DB.prepare("INSERT INTO login_tickets VALUES (?,?)")
-      .bind(await hash(ticket), expires)
+    await env.DB.prepare(
+      "INSERT INTO login_tickets(token_hash,expires_at,person_id) VALUES (?,?,?)",
+    )
+      .bind(await hash(ticket), expires, session.id)
       .run();
     return json({ url: `${url.origin}/#ticket=${ticket}`, expires }, 201);
   }
+  if (session.role !== "owner")
+    throw new HttpError(403, "Owner access required.");
   if (path === "/api/workspace" && method === "GET") {
     const [channels, threads, records] = await Promise.all([
       env.DB.prepare("SELECT * FROM channels ORDER BY rowid").all(),
       env.DB.prepare(
-        "SELECT * FROM threads WHERE archived=0 ORDER BY updated_at DESC LIMIT 200",
+        "SELECT * FROM threads WHERE archived=0 AND NOT EXISTS(SELECT 1 FROM agent_threads a WHERE a.thread_id=threads.id) ORDER BY updated_at DESC LIMIT 200",
       ).all<Thread>(),
       env.DB.prepare(
         "SELECT id,name,runtime,cwd,hostname,created_at FROM servers ORDER BY created_at",
@@ -306,11 +354,25 @@ async function route(request: Request): Promise<Response> {
     )
       .bind(id, input.name, input.runtime, await hash(token), Date.now())
       .run();
+    await env.DB.prepare(
+      "INSERT INTO people(id,handle,name,kind,server_id,created_at) VALUES (?,?,?,'bot',?,?)",
+    )
+      .bind(
+        id,
+        input.runtime + "-" + id.slice(0, 8),
+        input.name,
+        id,
+        Date.now(),
+      )
+      .run();
     return json({ id, token, ...input }, 201);
   }
   const serverId = path.match(/^\/api\/servers\/([a-f0-9-]+)$/)?.[1];
   if (serverId && method === "DELETE") {
     await server(serverId);
+    await env.DB.prepare("UPDATE people SET active=0 WHERE server_id=?")
+      .bind(serverId)
+      .run();
     await env.DB.prepare("DELETE FROM servers WHERE id=?").bind(serverId).run();
     await env.CONNECTORS.getByName(serverId).revoke();
     return json({ ok: true });
@@ -342,6 +404,18 @@ async function route(request: Request): Promise<Response> {
   );
   if (match) {
     const record = await thread(match[1]);
+    const linked = await env.DB.prepare(
+      "SELECT room_id FROM agent_threads WHERE thread_id=?",
+    )
+      .bind(record.id)
+      .first<{ room_id: string }>();
+    if (linked) {
+      try {
+        await requireRoom(linked.room_id, session);
+      } catch {
+        throw new HttpError(404, "Thread not found.");
+      }
+    }
     const room = env.CONVERSATIONS.getByName(record.id);
     const action = match[2];
     if (!action && method === "GET") return json(record);
@@ -513,12 +587,12 @@ async function route(request: Request): Promise<Response> {
     const results =
       q.length >= 3
         ? await env.DB.prepare(
-            "SELECT s.thread_id,s.message_id,s.text,t.title,t.channel_id FROM search s JOIN threads t ON t.id=s.thread_id WHERE search MATCH ? AND t.archived=0 LIMIT 30",
+            "SELECT s.thread_id,s.message_id,s.text,t.title,t.channel_id FROM search s JOIN threads t ON t.id=s.thread_id WHERE search MATCH ? AND t.archived=0 AND NOT EXISTS(SELECT 1 FROM agent_threads a WHERE a.thread_id=t.id) LIMIT 30",
           )
             .bind('"' + q.replaceAll('"', '""') + '"')
             .all()
         : await env.DB.prepare(
-            "SELECT s.thread_id,s.message_id,s.text,t.title,t.channel_id FROM search_messages s JOIN threads t ON t.id=s.thread_id WHERE instr(lower(s.text),lower(?))>0 AND t.archived=0 LIMIT 30",
+            "SELECT s.thread_id,s.message_id,s.text,t.title,t.channel_id FROM search_messages s JOIN threads t ON t.id=s.thread_id WHERE instr(lower(s.text),lower(?))>0 AND t.archived=0 AND NOT EXISTS(SELECT 1 FROM agent_threads a WHERE a.thread_id=t.id) LIMIT 30",
           )
             .bind(q)
             .all();

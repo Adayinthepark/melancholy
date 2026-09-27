@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { timingSafeEqual } from "node:crypto";
+import type { Identity } from "./team-auth";
 
 export const COOKIE = "melancholy_session";
 export const SESSION_AGE = 60 * 60 * 24 * 30;
@@ -26,9 +27,7 @@ export async function keyMatches(value: string): Promise<boolean> {
     new TextEncoder().encode(b),
   );
 }
-export async function authenticate(
-  request: Request,
-): Promise<{ expires: number } | null> {
+export async function authenticate(request: Request): Promise<Identity | null> {
   const token = request.headers
     .get("Cookie")
     ?.split(";")
@@ -37,11 +36,13 @@ export async function authenticate(
     ?.slice(COOKIE.length + 1);
   if (!token || token.length !== 64) return null;
   const record = await env.DB.prepare(
-    "SELECT expires_at FROM sessions WHERE token_hash=? AND expires_at>?",
+    "SELECT p.id,p.handle,p.name,p.kind,p.role,p.active,p.server_id,s.expires_at FROM sessions s JOIN people p ON p.id=s.person_id WHERE s.token_hash=? AND s.expires_at>? AND p.active=1",
   )
     .bind(await hash(token), Date.now())
-    .first<{ expires_at: number }>();
-  return record ? { expires: record.expires_at } : null;
+    .first<Identity & { expires_at: number }>();
+  return record
+    ? { ...record, expires: record.expires_at, sessionHash: await hash(token) }
+    : null;
 }
 export function checkOrigin(request: Request): boolean {
   const origin = request.headers.get("Origin");

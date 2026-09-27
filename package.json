@@ -1,6 +1,6 @@
 {
   "name": "melancholy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "packageManager": "npm@10.9.8",
   "dependencies": {
@@ -53,12 +53,12 @@
     "test": "vitest run",
     "test:connector": "node --test tests/adapters.test.mjs",
     "test:e2e": "playwright test",
-    "format": "prettier --write app components hooks lib worker tests docs packages README.md vite.config.ts vitest.config.ts",
+    "format": "prettier --write app components lib worker tests docs packages README.md vite.config.ts vitest.config.ts",
     "db:local": "wrangler d1 migrations apply melancholy --local",
     "db:remote": "wrangler d1 migrations apply melancholy --remote",
     "cf:types": "wrangler types"
   },
-  "description": "A quiet workspace for agents on your own machines.",
+  "description": "A minimal Slack-style workspace for people and agents, on Cloudflare.",
   "license": "MIT",
   "repository": {
     "type": "git",

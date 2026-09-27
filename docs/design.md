@@ -1,8 +1,8 @@
 # Design
 
-Melancholy is a shared place to work with agents running on your own machines.
-The conversation is the interface. The running task is visible without becoming
-a dashboard. Controls use literal names: New thread, Connect server, Stop.
+Melancholy is a minimal Slack-style workspace for people and agents.
+Channels and direct messages are the primary navigation. Agent execution appears
+inside the conversation. Controls use literal names: New message, Add member, Stop.
 
 ## Tokens
 
@@ -10,34 +10,35 @@ a dashboard. Controls use literal names: New thread, Connect server, Stop.
 - Ink: `#202020`; secondary ink: `#707070`; rule: `#e5e5e5`.
 - Dark mode uses the same neutral scale: `#151515`, `#1c1c1c`, `#282828`.
 - IBM Plex Sans for the interface and messages; IBM Plex Mono for code only.
-- 14 px interface, 15 px conversation, 20 px thread title.
+- 14 px interface and conversation text, 13 px in the thread pane.
 - 6 px control radius. Flat message rows, no floating message cards.
 
 ## Layout
 
 ```text
-┌──────────────────────┬──────────────────────────────────────────┐
-│ melancholy           │ # channel                 Search   Theme │
-│ async.love           ├──────────────────────────────────────────┤
-│                      │                                          │
-│ New thread           │ Thread title                             │
-│                      │                                          │
-│ Channels             │ You                       14:02          │
-│ # general            │ Message                                  │
-│ # engineering        │                                          │
-│                      │ Codex                     14:03          │
-│ Threads              │ Response and expandable tool activity    │
-│ Recent conversation  │                                          │
-│                      │                                          │
-│ Servers              │                                          │
-│ workstation          │ ┌──────────────────────────────────────┐ │
-│                      │ │ Reply                                │ │
-│ Settings             │ │ Attach       agent / server     Send │ │
-└──────────────────────┴─┴──────────────────────────────────────┴─┘
+┌──────────────────────┬─────────────────────────────┬─────────────────────┐
+│ melancholy           │ # engineering        Search │ Thread            × │
+│ async.love           ├─────────────────────────────┼─────────────────────┤
+│ New message          │                             │ Original message    │
+│                      │ Name              14:02     │                     │
+│ Channels           + │ Message                     │ Name        14:03   │
+│ # general            │ 👍 2     3 replies          │ Reply               │
+│ # engineering        │                             │                     │
+│                      │ Agent                       │                     │
+│ Direct messages    + │ Reply / tool activity       │                     │
+│ Name                 │                             │                     │
+│ Group                │                             │                     │
+│                      │ ┌─────────────────────────┐ │ ┌─────────────────┐ │
+│                      │ │ Message #engineering    │ │ │ Reply in thread │ │
+│ Profile / Settings   │ │ Attach   @        Send  │ │ │ Attach  @  Send │ │
+└──────────────────────┴─┴─────────────────────────┴─┴─┴─────────────────┴─┘
 ```
 
-Left aligned. Thread history is the dominant surface. The narrow sidebar is
-navigation, not a second inbox. On a phone it becomes a dismissible drawer.
+Left aligned, with a narrow persistent sidebar and flat chronological message
+rows. Unread conversations use weight and a small marker; mention counts appear
+beside their names. A thread opens in a side pane without moving the channel.
+On a phone, navigation becomes a dismissible drawer and the thread uses the
+full conversation area. Composer and member controls remain reachable.
 
 ## Review against the brief
 

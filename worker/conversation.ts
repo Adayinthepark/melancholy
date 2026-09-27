@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { publish } from "./team-store";
 import type {
   Activity,
   AgentEvent,
@@ -23,6 +24,7 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
       CREATE TABLE IF NOT EXISTS activity (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, detail TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS dirty (message_id TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS chat_dirty (run_id TEXT PRIMARY KEY);
     `);
     ctx.setWebSocketAutoResponse(
       new WebSocketRequestResponsePair("ping", "pong"),
@@ -120,6 +122,7 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
     text: string;
     id: string;
     attachments: Attachment[];
+    chat?: { roomId: string; botId: string; parentId: string | null };
   }): Promise<{ id: string; duplicate: boolean; error?: string }> {
     const existing = this.ctx.storage.sql
       .exec<{ run_id: string }>(
@@ -165,6 +168,13 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
     };
     this.ctx.storage.transactionSync(() => {
       this.setMeta("threadId", input.threadId);
+      if (input.chat) {
+        this.setMeta("chat", JSON.stringify(input.chat));
+        this.ctx.storage.sql.exec(
+          "INSERT OR IGNORE INTO chat_dirty VALUES (?)",
+          runId,
+        );
+      }
       this.ctx.storage.sql.exec(
         "INSERT INTO messages VALUES (?,?,?,?,?,?,?)",
         input.id,
@@ -200,6 +210,13 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
     });
     await this.ctx.storage.setAlarm(Date.now() + 1000);
     this.broadcast();
+    if (input.chat) {
+      try {
+        await this.syncChat(runId);
+      } catch {
+        /* Alarm retries the projection. */
+      }
+    }
     // An alarm retries dispatch if the process stops between commit and delivery.
     try {
       await this.dispatch();
@@ -280,10 +297,74 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
           "INSERT OR IGNORE INTO dirty SELECT id FROM messages WHERE run_id=?",
           runId,
         );
+      if (this.getMeta("chat"))
+        this.ctx.storage.sql.exec(
+          "INSERT OR IGNORE INTO chat_dirty VALUES (?)",
+          runId,
+        );
     });
     this.broadcast();
-    if (terminal.has(event.type))
+    if (terminal.has(event.type) || this.getMeta("chat"))
       await this.ctx.storage.setAlarm(Date.now() + 1000);
+    if (this.getMeta("chat")) {
+      try {
+        await this.syncChat(runId);
+      } catch {
+        /* Alarm retries the projection. */
+      }
+    }
+  }
+  private async syncChat(runId: string) {
+    const meta = this.getMeta("chat");
+    if (!meta) return;
+    const chat = JSON.parse(meta) as {
+      roomId: string;
+      botId: string;
+      parentId: string | null;
+    };
+    const run = this.ctx.storage.sql
+      .exec<StoredRun>("SELECT * FROM runs WHERE id=?", runId)
+      .toArray()[0];
+    const message = this.ctx.storage.sql
+      .exec<StoredMessage>(
+        "SELECT * FROM messages WHERE run_id=? AND role='assistant'",
+        runId,
+      )
+      .toArray()[0];
+    if (!run || !message) return;
+    const activity = this.ctx.storage.sql
+      .exec<Activity>(
+        "SELECT * FROM activity WHERE run_id=? ORDER BY created_at LIMIT 100",
+        runId,
+      )
+      .toArray();
+    await this.env.DB.batch([
+      this.env.DB.prepare(
+        "INSERT INTO chat_events(room_id,message_id,type,created_at) SELECT ?,?,'message.updated',? WHERE NOT EXISTS(SELECT 1 FROM chat_messages WHERE id=? AND event_seq>=?)",
+      ).bind(chat.roomId, message.id, Date.now(), message.id, run.event_seq),
+      this.env.DB.prepare(
+        `INSERT INTO chat_messages(id,room_id,parent_id,author_id,text,created_at,run_id,run_status,run_error,event_seq,activity) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET text=excluded.text,run_status=excluded.run_status,run_error=excluded.run_error,event_seq=excluded.event_seq,activity=excluded.activity WHERE chat_messages.event_seq<excluded.event_seq AND chat_messages.deleted_at IS NULL`,
+      ).bind(
+        message.id,
+        chat.roomId,
+        chat.parentId,
+        chat.botId,
+        message.text,
+        message.created_at,
+        runId,
+        run.status,
+        run.error,
+        run.event_seq,
+        JSON.stringify(activity),
+      ),
+    ]);
+    this.ctx.storage.sql.exec(
+      "DELETE FROM chat_dirty WHERE run_id=? AND EXISTS(SELECT 1 FROM runs WHERE id=? AND event_seq=?)",
+      runId,
+      runId,
+      run.event_seq,
+    );
+    await publish(chat.roomId);
   }
   async cancel() {
     const run = this.ctx.storage.sql
@@ -305,6 +386,10 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
   async alarm() {
     try {
       await this.dispatch();
+      for (const row of this.ctx.storage.sql
+        .exec<{ run_id: string }>("SELECT run_id FROM chat_dirty")
+        .toArray())
+        await this.syncChat(row.run_id);
       const threadId = this.getMeta("threadId");
       if (threadId) {
         const dirty = this.ctx.storage.sql

@@ -9,5 +9,5 @@ export default defineConfig(async () => ({
       },
     }),
   ],
-  test: { include: ["tests/core.test.ts"] },
+  test: { include: ["tests/*.test.ts"] },
 }));

@@ -1,43 +1,47 @@
 "use client";
-import { useState, useEffect } from "react";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Mark } from "./brand";
 import { post } from "@/lib/client";
-
 export function Login({ onLogin }: { onLogin: () => void }) {
-  const [key, setKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  async function login(value: string) {
+  const [mode, setMode] = useState<"member" | "owner" | "join">("member"),
+    [key, setKey] = useState(""),
+    [handle, setHandle] = useState(""),
+    [password, setPassword] = useState(""),
+    [name, setName] = useState(""),
+    [invite, setInvite] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const consumed = useRef(false);
+  async function submit(path: string, data: unknown) {
     setBusy(true);
     setError("");
     try {
-      await post("/login", { key: value });
+      await post(path, data);
       onLogin();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Sign in failed.");
+      setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
   useEffect(() => {
-    const fragment = new URLSearchParams(window.location.hash.slice(1));
-    const value = fragment.get("key");
-    const ticket = fragment.get("ticket");
-    if (value || ticket) {
-      history.replaceState(null, "", window.location.pathname);
-      if (value) void login(value);
-      else {
-        setBusy(true);
-        void post("/redeem", { ticket })
-          .then(onLogin)
-          .catch((e) => setError(e.message))
-          .finally(() => setBusy(false));
-      }
-    }
+    if (consumed.current) return;
+    consumed.current = true;
+    const params = new URLSearchParams(location.hash.slice(1)),
+      ticket = params.get("ticket"),
+      invitation = params.get("invite"),
+      value = params.get("key");
+    if (ticket || invitation || value)
+      history.replaceState(null, "", location.pathname + location.search);
+    if (invitation) {
+      setInvite(invitation);
+      setMode("join");
+    } else if (ticket) void submit("/redeem", { ticket });
+    else if (value) void submit("/login", { key: value });
   }, []);
   return (
     <main className="login-page">
@@ -49,44 +53,107 @@ export function Login({ onLogin }: { onLogin: () => void }) {
         className="login-form"
         onSubmit={(e) => {
           e.preventDefault();
-          void login(key);
+          void submit(
+            mode === "join" ? "/join" : "/login",
+            mode === "owner"
+              ? { key }
+              : mode === "join"
+                ? { ticket: invite, name, handle, password }
+                : { handle, password },
+          );
         }}
       >
         <div className="login-title">
-          <h1>Open your workspace</h1>
-          <p>
-            {typeof window !== "undefined"
-              ? window.location.host
-              : "melancholy"}
-          </p>
+          <h1>{mode === "join" ? "Join workspace" : "Sign in"}</h1>
+          <p>{typeof window !== "undefined" ? location.host : "melancholy"}</p>
         </div>
         <FieldGroup>
-          <Field data-invalid={!!error}>
-            <FieldLabel htmlFor="workspace-key">Workspace key</FieldLabel>
-            <Input
-              id="workspace-key"
-              type="password"
-              autoComplete="current-password"
-              autoFocus
-              required
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              aria-invalid={!!error}
-            />
-            {error && (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            )}
-          </Field>
-          <Button type="submit" disabled={busy || !key}>
+          {mode === "owner" ? (
+            <Field>
+              <FieldLabel htmlFor="workspace-key">Workspace key</FieldLabel>
+              <Input
+                id="workspace-key"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+              />
+            </Field>
+          ) : (
+            <>
+              {mode === "join" && (
+                <Field>
+                  <FieldLabel htmlFor="join-name">Display name</FieldLabel>
+                  <Input
+                    id="join-name"
+                    required
+                    maxLength={60}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </Field>
+              )}
+              <Field>
+                <FieldLabel htmlFor="login-handle">Username</FieldLabel>
+                <Input
+                  id="login-handle"
+                  autoComplete="username"
+                  required
+                  pattern="[a-z][a-z0-9_-]{1,39}"
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value.toLowerCase())}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="login-password">Password</FieldLabel>
+                <Input
+                  id="login-password"
+                  type="password"
+                  autoComplete={
+                    mode === "join" ? "new-password" : "current-password"
+                  }
+                  required
+                  minLength={mode === "join" ? 12 : 1}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                {mode === "join" && (
+                  <p className="text-muted-foreground text-xs">
+                    At least 12 characters.
+                  </p>
+                )}
+              </Field>
+            </>
+          )}
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <Button type="submit" disabled={busy}>
             {busy ? (
-              <Loader2 className="spin" data-icon="inline-start" />
+              <Loader2 className="spin" />
+            ) : mode === "join" ? (
+              "Join workspace"
             ) : (
               "Continue"
             )}
-            {!busy && <ArrowRight data-icon="inline-end" />}
           </Button>
+          {mode !== "join" && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setMode(mode === "owner" ? "member" : "owner");
+                setError("");
+              }}
+            >
+              {mode === "owner"
+                ? "Use username and password"
+                : "Use workspace key"}
+            </Button>
+          )}
         </FieldGroup>
       </form>
       <a

@@ -2,9 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "melancholy",
   "compatibility_date": "2026-09-27",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
+  "compatibility_flags": ["nodejs_compat"],
   "main": "worker/index.ts",
   "account_id": "9c4986eed90f3d703fe532980fca5418",
   "workers_dev": false,
@@ -13,21 +11,31 @@
   "vars": { "WORKSPACE_NAME": "async.love" },
   "observability": { "enabled": true, "traces": { "enabled": true } },
   "limits": { "cpu_ms": 30000 },
-  "d1_databases": [{
-    "binding": "DB",
-    "database_name": "melancholy",
-    "database_id": "ab63046a-27aa-4e49-a55d-7d49c997061e",
-    "migrations_dir": "migrations"
-  }],
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "melancholy",
+      "database_id": "ab63046a-27aa-4e49-a55d-7d49c997061e",
+      "migrations_dir": "migrations",
+    },
+  ],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "melancholy-files" }],
-  "durable_objects": { "bindings": [
-    { "name": "CONVERSATIONS", "class_name": "Conversation" },
-    { "name": "CONNECTORS", "class_name": "Connector" }
-  ] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Conversation", "Connector"] }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CONVERSATIONS", "class_name": "Conversation" },
+      { "name": "CONNECTORS", "class_name": "Connector" },
+      { "name": "INBOXES", "class_name": "Inbox" },
+      { "name": "CHAT_DISPATCHERS", "class_name": "ChatDispatcher" },
+    ],
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Conversation", "Connector"] },
+    { "tag": "v2", "new_sqlite_classes": ["Inbox", "ChatDispatcher"] },
+  ],
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "none",
-    "binding": "ASSETS"
-  }
+    "binding": "ASSETS",
+  },
 }

@@ -19,9 +19,12 @@
     "bindings": [
       { "name": "CONVERSATIONS", "class_name": "Conversation" },
       { "name": "CONNECTORS", "class_name": "Connector" },
+      { "name": "INBOXES", "class_name": "Inbox" },
+      { "name": "CHAT_DISPATCHERS", "class_name": "ChatDispatcher" },
     ],
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["Conversation", "Connector"] },
+    { "tag": "v2", "new_sqlite_classes": ["Inbox", "ChatDispatcher"] },
   ],
 }

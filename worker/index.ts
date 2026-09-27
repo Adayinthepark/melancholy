@@ -1,9 +1,15 @@
 import handler from "vinext/server/fetch-handler";
 import { handleApi } from "./api";
+import { recoverAgentRequests } from "./agent-recovery";
 export { Conversation } from "./conversation";
 export { Connector } from "./connector";
+export { Inbox } from "./inbox";
+export { ChatDispatcher } from "./chat-dispatcher";
 
 export default {
+  async scheduled(_controller: ScheduledController, env: Cloudflare.Env) {
+    await recoverAgentRequests(env);
+  },
   async fetch(
     request: Request,
     env: Cloudflare.Env,

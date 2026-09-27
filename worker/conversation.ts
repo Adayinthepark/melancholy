@@ -1,0 +1,334 @@
+import { DurableObject } from "cloudflare:workers";
+import type {
+  Activity,
+  AgentEvent,
+  Attachment,
+  ChatMessage,
+  Job,
+  Run,
+  Runtime,
+  Snapshot,
+} from "../lib/protocol";
+
+type StoredMessage = Omit<ChatMessage, "attachments"> & { attachments: string };
+type StoredRun = Run & { job: string; dispatched: number; event_seq: number };
+const terminal = new Set(["completed", "failed", "cancelled"]);
+
+export class Conversation extends DurableObject<Cloudflare.Env> {
+  constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
+    super(ctx, env);
+    ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, role TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL, runtime TEXT, run_id TEXT, attachments TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, server_id TEXT NOT NULL, runtime TEXT NOT NULL, status TEXT NOT NULL, session_id TEXT, error TEXT, created_at INTEGER NOT NULL, job TEXT NOT NULL, dispatched INTEGER NOT NULL DEFAULT 0, event_seq INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS activity (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, detail TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS dirty (message_id TEXT PRIMARY KEY);
+    `);
+    ctx.setWebSocketAutoResponse(
+      new WebSocketRequestResponsePair("ping", "pong"),
+    );
+  }
+
+  private getMeta(key: string): string | null {
+    return (
+      this.ctx.storage.sql
+        .exec<{ value: string }>("SELECT value FROM metadata WHERE key=?", key)
+        .toArray()[0]?.value ?? null
+    );
+  }
+  private setMeta(key: string, value: string) {
+    this.ctx.storage.sql.exec(
+      "INSERT INTO metadata VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      key,
+      value,
+    );
+  }
+  async fetch(request: Request): Promise<Response> {
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket")
+      return new Response("Upgrade required", { status: 426 });
+    const pair = new WebSocketPair();
+    const expires = Number(request.headers.get("x-session-expires"));
+    if (!Number.isFinite(expires) || expires <= Date.now())
+      return new Response("Unauthorized", { status: 401 });
+    this.ctx.acceptWebSocket(pair[1]);
+    pair[1].serializeAttachment({ expires });
+    pair[1].send(JSON.stringify({ type: "snapshot", ...this.snapshot() }));
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+  webSocketMessage(ws: WebSocket) {
+    ws.close(1008, "Read-only connection");
+  }
+  webSocketClose(ws: WebSocket, code: number) {
+    ws.close(code);
+  }
+
+  snapshot(before?: number): Snapshot {
+    const rows = this.ctx.storage.sql
+      .exec<StoredMessage>(
+        "SELECT * FROM messages WHERE created_at<? ORDER BY created_at DESC,id DESC LIMIT 101",
+        before ?? Number.MAX_SAFE_INTEGER,
+      )
+      .toArray();
+    const selected = rows.slice(0, 100).reverse();
+    const runIds = selected
+      .map((m) => m.run_id)
+      .filter((v): v is string => !!v);
+    // Each page is small, while old tool logs remain in the room's database.
+    const runs = this.ctx.storage.sql
+      .exec<StoredRun>("SELECT * FROM runs ORDER BY created_at DESC LIMIT 100")
+      .toArray()
+      .filter((r) => runIds.includes(r.id));
+    const activity = this.ctx.storage.sql
+      .exec<Activity>(
+        "SELECT * FROM activity ORDER BY created_at DESC LIMIT 300",
+      )
+      .toArray()
+      .filter((a) => runIds.includes(a.run_id))
+      .reverse();
+    return {
+      messages: selected.map((m) => ({
+        ...m,
+        attachments: JSON.parse(m.attachments),
+      })),
+      runs: runs.map(({ job: _job, dispatched: _d, event_seq: _s, ...r }) => r),
+      activity,
+      hasMore: rows.length > 100,
+    };
+  }
+  private broadcast() {
+    const data = JSON.stringify({ type: "snapshot", ...this.snapshot() });
+    for (const ws of this.ctx.getWebSockets()) {
+      const attachment = ws.deserializeAttachment() as {
+        expires: number;
+      } | null;
+      if (!attachment || attachment.expires <= Date.now()) {
+        ws.close(1008, "Session expired");
+        continue;
+      }
+      try {
+        ws.send(data);
+      } catch {
+        ws.close(1011, "Reconnect");
+      }
+    }
+  }
+
+  async send(input: {
+    threadId: string;
+    serverId: string;
+    runtime: Runtime;
+    text: string;
+    id: string;
+    attachments: Attachment[];
+  }): Promise<{ id: string; duplicate: boolean; error?: string }> {
+    const existing = this.ctx.storage.sql
+      .exec<{ run_id: string }>(
+        "SELECT run_id FROM messages WHERE id=?",
+        input.id,
+      )
+      .toArray()[0];
+    if (existing) return { id: existing.run_id, duplicate: true };
+    if (
+      this.ctx.storage.sql
+        .exec(
+          "SELECT id FROM runs WHERE status IN ('queued','running') LIMIT 1",
+        )
+        .toArray().length
+    )
+      return {
+        id: "",
+        duplicate: false,
+        error: "A turn is already running. Stop it before sending another.",
+      };
+    const last =
+      this.ctx.storage.sql
+        .exec<{ created_at: number }>(
+          "SELECT MAX(created_at) AS created_at FROM messages",
+        )
+        .toArray()[0]?.created_at ?? 0;
+    const now = Math.max(Date.now(), last + 1);
+    const runId = crypto.randomUUID();
+    const prior = this.ctx.storage.sql
+      .exec<{ session_id: string }>(
+        "SELECT session_id FROM runs WHERE server_id=? AND runtime=? AND session_id IS NOT NULL ORDER BY created_at DESC LIMIT 1",
+        input.serverId,
+        input.runtime,
+      )
+      .toArray()[0];
+    const job: Job = {
+      id: runId,
+      threadId: input.threadId,
+      prompt: input.text,
+      runtime: input.runtime,
+      sessionId: prior?.session_id ?? null,
+      attachments: input.attachments,
+    };
+    this.ctx.storage.transactionSync(() => {
+      this.setMeta("threadId", input.threadId);
+      this.ctx.storage.sql.exec(
+        "INSERT INTO messages VALUES (?,?,?,?,?,?,?)",
+        input.id,
+        "user",
+        input.text,
+        now,
+        null,
+        runId,
+        JSON.stringify(input.attachments),
+      );
+      this.ctx.storage.sql.exec(
+        "INSERT INTO messages VALUES (?,?,?,?,?,?,?)",
+        crypto.randomUUID(),
+        "assistant",
+        "",
+        now + 1,
+        input.runtime,
+        runId,
+        "[]",
+      );
+      this.ctx.storage.sql.exec(
+        "INSERT INTO runs (id,server_id,runtime,status,session_id,error,created_at,job) VALUES (?,?,?,'queued',NULL,NULL,?,?)",
+        runId,
+        input.serverId,
+        input.runtime,
+        now,
+        JSON.stringify(job),
+      );
+      this.ctx.storage.sql.exec(
+        "INSERT OR IGNORE INTO dirty VALUES (?)",
+        input.id,
+      );
+    });
+    await this.ctx.storage.setAlarm(Date.now() + 1000);
+    this.broadcast();
+    // An alarm retries dispatch if the process stops between commit and delivery.
+    try {
+      await this.dispatch();
+    } catch {
+      /* The durable outbox owns the retry. */
+    }
+    return { id: runId, duplicate: false };
+  }
+  private async dispatch() {
+    const pending = this.ctx.storage.sql
+      .exec<StoredRun>(
+        "SELECT * FROM runs WHERE dispatched=0 AND status='queued'",
+      )
+      .toArray();
+    for (const run of pending) {
+      await this.env.CONNECTORS.getByName(run.server_id).submit(
+        JSON.parse(run.job) as Job,
+      );
+      this.ctx.storage.sql.exec(
+        "UPDATE runs SET dispatched=1 WHERE id=?",
+        run.id,
+      );
+    }
+  }
+  async receive(runId: string, seq: number, event: AgentEvent) {
+    const run = this.ctx.storage.sql
+      .exec<StoredRun>("SELECT * FROM runs WHERE id=?", runId)
+      .toArray()[0];
+    if (!run || seq <= run.event_seq || terminal.has(run.status)) return;
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+        "UPDATE runs SET event_seq=? WHERE id=?",
+        seq,
+        runId,
+      );
+      if (event.type === "started")
+        this.ctx.storage.sql.exec(
+          "UPDATE runs SET status='running',session_id=COALESCE(?,session_id) WHERE id=?",
+          event.sessionId ?? null,
+          runId,
+        );
+      if (event.type === "text")
+        this.ctx.storage.sql.exec(
+          "UPDATE messages SET text=? WHERE run_id=? AND role='assistant'",
+          event.text.slice(0, 500000),
+          runId,
+        );
+      if (event.type === "activity")
+        this.ctx.storage.sql.exec(
+          "INSERT INTO activity VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,detail=excluded.detail,status=excluded.status",
+          `${runId}:${event.id}`,
+          runId,
+          "tool",
+          event.title.slice(0, 300),
+          (event.detail ?? "").slice(0, 20000),
+          event.status ?? "running",
+          Date.now(),
+        );
+      if (event.type === "completed")
+        this.ctx.storage.sql.exec(
+          "UPDATE runs SET status='completed',session_id=COALESCE(?,session_id) WHERE id=?",
+          event.sessionId ?? null,
+          runId,
+        );
+      if (event.type === "failed")
+        this.ctx.storage.sql.exec(
+          "UPDATE runs SET status='failed',error=? WHERE id=?",
+          event.error.slice(0, 2000),
+          runId,
+        );
+      if (event.type === "cancelled")
+        this.ctx.storage.sql.exec(
+          "UPDATE runs SET status='cancelled' WHERE id=?",
+          runId,
+        );
+      if (terminal.has(event.type))
+        this.ctx.storage.sql.exec(
+          "INSERT OR IGNORE INTO dirty SELECT id FROM messages WHERE run_id=?",
+          runId,
+        );
+    });
+    this.broadcast();
+    if (terminal.has(event.type))
+      await this.ctx.storage.setAlarm(Date.now() + 1000);
+  }
+  async cancel() {
+    const run = this.ctx.storage.sql
+      .exec<StoredRun>(
+        "SELECT * FROM runs WHERE status IN ('queued','running') LIMIT 1",
+      )
+      .toArray()[0];
+    if (!run) return;
+    // Cancel in the relay even when the initial room-to-relay dispatch is still in flight.
+    await this.env.CONNECTORS.getByName(run.server_id).cancel(
+      run.id,
+      JSON.parse(run.job) as Job,
+    );
+    await this.receive(run.id, run.event_seq + 1, { type: "cancelled" });
+  }
+  closeSessions() {
+    for (const ws of this.ctx.getWebSockets()) ws.close(1008, "Signed out");
+  }
+  async alarm() {
+    try {
+      await this.dispatch();
+      const threadId = this.getMeta("threadId");
+      if (threadId) {
+        const dirty = this.ctx.storage.sql
+          .exec<{ message_id: string; text: string }>(
+            "SELECT dirty.message_id,messages.text FROM dirty JOIN messages ON messages.id=dirty.message_id",
+          )
+          .toArray();
+        for (const m of dirty) {
+          await this.env.DB.prepare(
+            "INSERT INTO search_messages VALUES (?,?,?) ON CONFLICT(message_id) DO UPDATE SET text=excluded.text",
+          )
+            .bind(m.message_id, threadId, m.text)
+            .run();
+          this.ctx.storage.sql.exec(
+            "DELETE FROM dirty WHERE message_id=?",
+            m.message_id,
+          );
+        }
+        await this.env.DB.prepare("UPDATE threads SET updated_at=? WHERE id=?")
+          .bind(Date.now(), threadId)
+          .run();
+      }
+    } catch {
+      await this.ctx.storage.setAlarm(Date.now() + 10000);
+    }
+  }
+}

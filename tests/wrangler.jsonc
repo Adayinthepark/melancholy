@@ -1,0 +1,27 @@
+{
+  "name": "melancholy-test",
+  "main": "worker.ts",
+  "compatibility_date": "2026-09-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "WORKSPACE_NAME": "Test workspace",
+    "WORKSPACE_KEY": "test-workspace-key-that-is-long-enough-for-tests",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "test",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+    },
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "test-files" }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CONVERSATIONS", "class_name": "Conversation" },
+      { "name": "CONNECTORS", "class_name": "Connector" },
+    ],
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Conversation", "Connector"] },
+  ],
+}

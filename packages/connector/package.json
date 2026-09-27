@@ -1,0 +1,21 @@
+{
+  "name": "@melancholy/connector",
+  "version": "0.1.0",
+  "description": "Connect a local Codex or Claude Code installation to melancholy.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "melancholy-connect": "bin.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "files": [
+    "bin.mjs",
+    "adapters.mjs",
+    "README.md"
+  ]
+}

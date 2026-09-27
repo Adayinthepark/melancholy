@@ -4,6 +4,26 @@ const key = readFileSync(".dev.vars", "utf8")
   .match(/^WORKSPACE_KEY=(.+)$/m)![1]
   .trim();
 
+test("one-use link signs in and clears the ticket from the address bar", async ({
+  page,
+  request,
+}) => {
+  await request.post("/api/login", {
+    headers: { Origin: "http://127.0.0.1:3017" },
+    data: { key },
+  });
+  const created = await request.post("/api/login-links", {
+    headers: { Origin: "http://127.0.0.1:3017" },
+  });
+  expect(created.status()).toBe(201);
+  const { url } = await created.json();
+  await page.goto(url);
+  await expect(
+    page.getByRole("button", { name: "Search workspace", exact: true }),
+  ).toBeVisible();
+  expect(new URL(page.url()).hash).toBe("");
+});
+
 test("owner login, channel creation, queued messages, cancellation, and responsive navigation", async ({
   page,
 }) => {

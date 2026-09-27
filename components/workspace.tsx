@@ -209,7 +209,40 @@ export function WorkspaceApp() {
         try {
           const value = JSON.parse(event.data);
           if (value.type === "snapshot") {
-            setSnapshot(value);
+            setSnapshot((previous) => {
+              const first = value.messages[0]?.created_at;
+              const older =
+                first === undefined
+                  ? []
+                  : previous.messages.filter(
+                      (message) => message.created_at < first,
+                    );
+              if (!older.length) return value;
+              const known = new Set(
+                previous.messages.map((message) => message.id),
+              );
+              // A long disconnect can leave a gap between pages. Reload the
+              // latest page in that case so pagination can fill it normally.
+              if (
+                !value.messages.some((message: Snapshot["messages"][number]) =>
+                  known.has(message.id),
+                )
+              )
+                return value;
+              const runs = new Map(previous.runs.map((run) => [run.id, run]));
+              for (const run of value.runs) runs.set(run.id, run);
+              const activity = new Map(
+                previous.activity.map((item) => [item.id, item]),
+              );
+              for (const item of value.activity) activity.set(item.id, item);
+              return {
+                ...value,
+                messages: [...older, ...value.messages],
+                runs: [...runs.values()],
+                activity: [...activity.values()],
+                hasMore: previous.hasMore,
+              };
+            });
             setLoadingThread(false);
           }
         } catch {

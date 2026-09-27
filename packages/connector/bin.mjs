@@ -16,6 +16,7 @@ import { createInterface } from "node:readline";
 import { createHash } from "node:crypto";
 import WebSocket from "ws";
 import { commandFor, OutputParser } from "./adapters.mjs";
+import { killTree } from "./process.mjs";
 
 const { values: flags } = parseArgs({
   options: {
@@ -23,7 +24,7 @@ const { values: flags } = parseArgs({
     runtime: { type: "string" },
     cwd: { type: "string" },
     config: { type: "string" },
-    permission: { type: "string", default: "read-only" },
+    permission: { type: "string" },
     "state-dir": { type: "string" },
     timeout: { type: "string", default: "900" },
     help: { type: "boolean" },
@@ -32,7 +33,7 @@ const { values: flags } = parseArgs({
 });
 if (flags.help) {
   console.log(
-    `melancholy connector\n\n  node packages/connector/bin.mjs --url https://async.love --runtime codex --cwd /path/to/project\n\n  MELANCHOLY_TOKEN     Server token from workspace settings\n  --config <file>     JSON with url, token, runtime, cwd and optional permission\n  --permission       read-only (default) or workspace-write\n  --timeout          Maximum turn duration in seconds (default 900)\n  --state-dir        Directory for the durable delivery journal\n\nExisting CLI authentication and model settings are used. No inbound port is opened.`,
+    `melancholy connector\n\n  node packages/connector/bin.mjs --url https://async.love --runtime codex --cwd /path/to/project\n\n  MELANCHOLY_TOKEN     Server token from workspace settings\n  --config <file>     JSON with url, token, runtime, cwd and optional permission\n  --permission       read-only (default), workspace-write, or inherit\n  --timeout          Maximum turn duration in seconds (default 900)\n  --state-dir        Directory for the durable delivery journal\n\nExisting CLI authentication and model settings are used. No inbound port is opened.`,
   );
   process.exit(0);
 }
@@ -54,9 +55,7 @@ if (!token || !/^[a-f0-9]{64}$/.test(token))
     "Set MELANCHOLY_TOKEN to the server token from workspace settings.",
   );
 const runtime = flags.runtime || config.runtime || "codex";
-const permission = config.permission || flags.permission;
-if (!["read-only", "workspace-write"].includes(permission))
-  throw new Error("Permission must be read-only or workspace-write.");
+const permission = flags.permission || config.permission || "read-only";
 commandFor(runtime, null, permission);
 const cwd = realpathSync(resolve(flags.cwd || config.cwd || process.cwd()));
 const timeout = Number(flags.timeout);
@@ -131,14 +130,6 @@ for (const job of Object.values(state.jobs))
   }
 save();
 
-function killTree(child) {
-  try {
-    if (process.platform === "win32") child.kill("SIGTERM");
-    else process.kill(-child.pid, "SIGTERM");
-  } catch {
-    /* Already exited. */
-  }
-}
 async function download(job) {
   const dir = join(stateDir, "attachments", job.id);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -172,6 +163,7 @@ async function run(job) {
     await emit(job.id, { type: "started" });
     if (record.status === "cancelled") return;
     const files = await download(job);
+    if (record.status === "cancelled" || stopping) return;
     const { command, args } = commandFor(runtime, job.sessionId, permission);
     // Connector credentials never enter the agent's environment.
     const childEnv = { ...process.env };
@@ -391,7 +383,7 @@ function shutdown() {
   for (const child of processes.values()) killTree(child);
   save();
   ws?.close();
-  setTimeout(() => process.exit(0), 1000).unref();
+  setTimeout(() => process.exit(0), 6000).unref();
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

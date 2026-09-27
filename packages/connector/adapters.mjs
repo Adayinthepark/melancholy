@@ -1,14 +1,14 @@
 // The CLI controls tools, permissions, authentication and model selection.
 // The transport never turns a prompt into a shell command.
 export function commandFor(runtime, sessionId, permission = "read-only") {
+  if (!["read-only", "workspace-write", "inherit"].includes(permission))
+    throw new Error(
+      "Permission must be read-only, workspace-write, or inherit.",
+    );
   if (runtime === "codex") {
-    const args = [
-      "exec",
-      "--json",
-      "--skip-git-repo-check",
-      "-c",
-      `sandbox_mode="${permission}"`,
-    ];
+    const args = ["exec", "--json", "--skip-git-repo-check"];
+    if (permission !== "inherit")
+      args.push("-c", `sandbox_mode="${permission}"`);
     if (sessionId) args.push("resume", sessionId);
     args.push("-");
     return { command: "codex", args };
@@ -24,10 +24,6 @@ export function commandFor(runtime, sessionId, permission = "read-only") {
     if (permission === "read-only") args.push("--permission-mode", "plan");
     else if (permission === "workspace-write")
       args.push("--permission-mode", "acceptEdits");
-    else
-      throw new Error(
-        "Claude supports read-only or workspace-write in this connector.",
-      );
     if (sessionId) args.push("--resume", sessionId);
     return { command: "claude", args };
   }

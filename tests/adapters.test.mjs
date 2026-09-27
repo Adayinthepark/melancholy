@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { commandFor, OutputParser } from "../packages/connector/adapters.mjs";
+import { killTree } from "../packages/connector/process.mjs";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 test("prompts use stdin, and resumed sessions stay explicit", () => {
   const fresh = commandFor("codex", null);
   assert.equal(fresh.command, "codex");
@@ -10,6 +13,11 @@ test("prompts use stdin, and resumed sessions stay explicit", () => {
   assert.deepEqual(resumed.args.slice(-3), ["resume", "session-1", "-"]);
   assert.ok(commandFor("claude", "session-2").args.includes("--resume"));
   assert.throws(() => commandFor("shell", null));
+  assert.throws(() => commandFor("codex", null, "invalid"));
+  assert.ok(!commandFor("codex", null, "inherit").args.includes("-c"));
+  assert.ok(
+    !commandFor("claude", null, "inherit").args.includes("--permission-mode"),
+  );
 });
 test("Codex message snapshots do not duplicate completed items", () => {
   const events = [];
@@ -64,3 +72,33 @@ test("tool failures and CLI failures remain visible", () => {
   assert.equal(events[0].status, "failed");
   assert.equal(parser.error, "rate limited");
 });
+test(
+  "stopping a CLI escalates when it ignores termination",
+  { skip: process.platform === "win32", timeout: 5000 },
+  async () => {
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        'process.on("SIGTERM", () => {}); console.log("ready"); setInterval(() => {}, 1000);',
+      ],
+      {
+        detached: true,
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+    try {
+      await once(child.stdout, "data");
+      const closed = once(child, "close");
+      killTree(child, 50);
+      const [, signal] = await closed;
+      assert.equal(signal, "SIGKILL");
+    } finally {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        /* Already exited. */
+      }
+    }
+  },
+);

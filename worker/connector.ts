@@ -53,6 +53,7 @@ export class Connector extends DurableObject<Cloudflare.Env> {
       return new Response("Upgrade required", { status: 426 });
     const id = request.headers.get("x-connector-id");
     if (!id) return new Response("Unauthorized", { status: 401 });
+    if (this.revoked()) return new Response("Server removed", { status: 401 });
     const epoch = crypto.randomUUID();
     this.ctx.storage.sql.exec(
       "INSERT INTO meta VALUES ('epoch',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -67,6 +68,7 @@ export class Connector extends DurableObject<Cloudflare.Env> {
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
   async online(): Promise<boolean> {
+    if (this.revoked()) return false;
     return this.ctx
       .getWebSockets()
       .some(
@@ -74,6 +76,27 @@ export class Connector extends DurableObject<Cloudflare.Env> {
           ws.readyState === WebSocket.OPEN &&
           (ws.deserializeAttachment() as { ready?: boolean })?.ready,
       );
+  }
+  private revoked(): boolean {
+    return (
+      this.ctx.storage.sql
+        .exec("SELECT 1 FROM meta WHERE key='revoked'")
+        .toArray().length > 0
+    );
+  }
+  private current(ws: WebSocket, epoch: string): boolean {
+    if (this.revoked()) {
+      ws.close(4003, "Server removed");
+      return false;
+    }
+    const latest = this.ctx.storage.sql
+      .exec<{ value: string }>("SELECT value FROM meta WHERE key='epoch'")
+      .toArray()[0]?.value;
+    if (epoch !== latest) {
+      ws.close(4001, "Connection replaced");
+      return false;
+    }
+    return true;
   }
   private send(data: unknown) {
     for (const ws of this.ctx.getWebSockets()) {
@@ -86,6 +109,13 @@ export class Connector extends DurableObject<Cloudflare.Env> {
     }
   }
   async submit(job: Job) {
+    if (this.revoked()) {
+      await this.env.CONVERSATIONS.getByName(job.threadId).receive(job.id, 1, {
+        type: "failed",
+        error: "Server removed.",
+      });
+      return;
+    }
     const existing = this.ctx.storage.sql
       .exec<StoredJob>("SELECT * FROM jobs WHERE id=?", job.id)
       .toArray()[0];
@@ -106,12 +136,18 @@ export class Connector extends DurableObject<Cloudflare.Env> {
     this.send({ type: "cancel", jobId: id });
   }
   async revoke() {
+    this.ctx.storage.sql.exec(
+      "INSERT OR IGNORE INTO meta VALUES ('revoked','1')",
+    );
     for (const ws of this.ctx.getWebSockets()) ws.close(4003, "Server removed");
     const jobs = this.ctx.storage.sql
       .exec<StoredJob>(
         "SELECT * FROM jobs WHERE status IN ('queued','running')",
       )
       .toArray();
+    this.ctx.storage.sql.exec(
+      "UPDATE jobs SET status='failed' WHERE status IN ('queued','running')",
+    );
     for (const row of jobs) {
       const job = JSON.parse(row.body) as Job;
       await this.env.CONVERSATIONS.getByName(job.threadId).receive(
@@ -120,9 +156,6 @@ export class Connector extends DurableObject<Cloudflare.Env> {
         { type: "failed", error: "Server removed." },
       );
     }
-    this.ctx.storage.sql.exec(
-      "UPDATE jobs SET status='failed' WHERE status IN ('queued','running')",
-    );
   }
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
     if (typeof raw !== "string" || raw.length > 550000) {
@@ -134,13 +167,7 @@ export class Connector extends DurableObject<Cloudflare.Env> {
       epoch: string;
       ready: boolean;
     };
-    const epoch = this.ctx.storage.sql
-      .exec<{ value: string }>("SELECT value FROM meta WHERE key='epoch'")
-      .toArray()[0]?.value;
-    if (attachment.epoch !== epoch) {
-      ws.close(4001, "Connection replaced");
-      return;
-    }
+    if (!this.current(ws, attachment.epoch)) return;
     let packet: z.infer<typeof packetSchema>;
     try {
       packet = packetSchema.parse(JSON.parse(raw));
@@ -153,11 +180,16 @@ export class Connector extends DurableObject<Cloudflare.Env> {
         ws.close(1008, "Already connected");
         return;
       }
-      await this.env.DB.prepare(
+      const updated = await this.env.DB.prepare(
         "UPDATE servers SET hostname=?,cwd=? WHERE id=?",
       )
         .bind(packet.hostname, packet.cwd, attachment.id)
         .run();
+      if (!this.current(ws, attachment.epoch)) return;
+      if (!updated.meta.changes) {
+        await this.revoke();
+        return;
+      }
       attachment.ready = true;
       ws.serializeAttachment(attachment);
       const jobs = this.ctx.storage.sql
@@ -166,6 +198,7 @@ export class Connector extends DurableObject<Cloudflare.Env> {
         )
         .toArray();
       for (const row of jobs) {
+        if (!this.current(ws, attachment.epoch)) return;
         const job = JSON.parse(row.body) as Job;
         if (row.status === "queued")
           ws.send(JSON.stringify({ type: "run", job }));
@@ -182,11 +215,12 @@ export class Connector extends DurableObject<Cloudflare.Env> {
             },
           );
           this.ctx.storage.sql.exec(
-            "UPDATE jobs SET status='failed' WHERE id=?",
+            "UPDATE jobs SET status='failed' WHERE id=? AND status='running'",
             job.id,
           );
         }
       }
+      if (!this.current(ws, attachment.epoch)) return;
       ws.send(JSON.stringify({ type: "ready" }));
       return;
     }
@@ -208,6 +242,7 @@ export class Connector extends DurableObject<Cloudflare.Env> {
         packet.seq,
         packet.event as AgentEvent,
       );
+      if (!this.current(ws, attachment.epoch)) return;
       const status =
         packet.event.type === "started"
           ? "running"
@@ -215,7 +250,7 @@ export class Connector extends DurableObject<Cloudflare.Env> {
             ? packet.event.type
             : row.status;
       this.ctx.storage.sql.exec(
-        "UPDATE jobs SET seq=MAX(seq,?),status=? WHERE id=?",
+        "UPDATE jobs SET seq=MAX(seq,?),status=? WHERE id=? AND status IN ('queued','running')",
         packet.seq,
         status,
         job.id,

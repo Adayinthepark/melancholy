@@ -44,10 +44,16 @@ configuration when the agent should edit the project. For Codex this sets the
 workspace sandbox; for Claude it selects `acceptEdits`. Commands that need an
 interactive approval cannot be approved from the web UI in this release.
 
+Use `permission: "inherit"` only when the server's existing CLI policy is the
+intended execution policy, such as an already isolated container. This passes
+no sandbox or permission override to the CLI and may grant access outside
+`cwd`. It is an explicit local configuration choice, never an automatic fallback
+when a sandbox fails. A browser cannot change this setting.
+
 Each thread gets an independent CLI session. Subsequent turns use the explicit
 session ID, never the CLI's global `--last` or `--continue` selection. The default
 turn timeout is 900 seconds. Stop sends a termination signal to the CLI process
-group. Network reconnects preserve an active child process and replay pending
+group and forces termination after five seconds if needed. Network reconnects preserve an active child process and replay pending
 output; a connector process restart marks an active turn interrupted.
 
 The journal is stored under `~/.local/state/melancholy/` by default. Preserve it

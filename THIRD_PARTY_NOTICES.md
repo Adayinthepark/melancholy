@@ -11,10 +11,11 @@ Project source is MIT licensed unless a file states otherwise.
   license is preserved in `.agents/skills/frontend-design/LICENSE.txt`.
 - The shadcn skill comes from [shadcn-ui/ui](https://github.com/shadcn-ui/ui),
   MIT licensed. Cloudflare skills come from
-  [cloudflare/skills](https://github.com/cloudflare/skills), and the vinext skill
-  from [cloudflare/vinext](https://github.com/cloudflare/vinext), under their
-  respective MIT licenses. Source paths and content hashes are recorded in
-  `skills-lock.json`.
+  [cloudflare/skills](https://github.com/cloudflare/skills) under Apache-2.0.
+  The vinext skill comes from
+  [cloudflare/vinext](https://github.com/cloudflare/vinext) under MIT.
+  These upstream license texts are retained in `LICENSES`. Source paths and
+  content hashes are recorded in `skills-lock.json`.
 
 Dependency licenses remain in their packages. `fflate` is overridden to the
 compatible patched version 0.7.5 while the upstream dependency pins 0.7.4.

@@ -400,7 +400,7 @@ it("sends RFC 8291 encrypted private payloads with a valid VAPID signature and s
   await drainPush(env);
   const headers = new Headers(payload!.headers);
   expect(headers.get("content-encoding")).toBe("aes128gcm");
-  expect(payload!.redirect).toBe("error");
+  expect(payload!.redirect).toBe("manual");
   const encoded = payload!.body as Uint8Array;
   expect(new TextDecoder().decode(encoded)).not.toContain("Confidential");
   const clear = await decrypt(encoded, f);

@@ -87,9 +87,17 @@ async function transmit(
   );
   const response = await fetch(subscription.endpoint, {
     ...payload,
-    redirect: "error",
+    // Workers supports manual/follow, not redirect:error. 3xx is permanent failure.
+    redirect: "manual",
     signal: AbortSignal.timeout(10000),
   });
+  if (!response.ok)
+    console.warn(
+      JSON.stringify({
+        event: "push_provider_rejected",
+        status: response.status,
+      }),
+    );
   await response.body?.cancel();
   return response.status;
 }
@@ -316,8 +324,19 @@ export async function handlePush(
         url: "/",
         tag: "test",
       });
-    } catch {
-      /* Generic error below. */
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          event: "push_transport_failed",
+          error: error instanceof Error ? error.name : "UnknownError",
+          reason:
+            error instanceof Error
+              ? error.message
+                  .replace(/https?:\/\/\S+/g, "[endpoint]")
+                  .slice(0, 200)
+              : "",
+        }),
+      );
     }
     if (status === 404 || status === 410) {
       await env.DB.prepare("DELETE FROM push_subscriptions WHERE id=?")

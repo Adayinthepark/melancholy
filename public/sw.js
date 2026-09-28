@@ -1,5 +1,5 @@
 /* Only public offline assets are cached. Authenticated pages and APIs stay on the network. */
-const CACHE = "melancholy-shell-v1";
+const CACHE = "melancholy-shell-v2";
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
@@ -25,7 +25,17 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match("/offline.html")),
+      fetch(event.request).catch(async () => {
+        const cached = await caches.match("/offline.html");
+        // Static Assets canonicalizes .html URLs; navigation requests cannot
+        // consume a cached redirected response. Return a fresh response.
+        return cached
+          ? new Response(cached.body, {
+              status: 200,
+              headers: { "Content-Type": "text/html; charset=utf-8" },
+            })
+          : new Response("Offline. Reconnect and reload.", { status: 503 });
+      }),
     );
   }
 });

@@ -1,5 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { SettingsSkeleton } from "./loading-states";
+import { Skeleton } from "./ui/skeleton";
 import { ArrowLeft, Sun, Moon } from "lucide-react";
 import { toast } from "sonner";
 import { Mark } from "./brand";
@@ -53,72 +57,72 @@ const details: Record<string, string> = {
   usage:
     "Reported token usage by server, channel and thread. Input includes cached tokens.",
 };
-export function WorkspaceSettingsPage({ section }: { section: string }) {
+export function WorkspaceSettingsPage() {
+  const pathname = usePathname();
+  const section = pathname.split("/")[3] || "general";
   const [workspace, setWorkspace] = useState<TeamWorkspace | null>(null),
     [signedOut, setSignedOut] = useState(false),
     [error, setError] = useState("");
-  const [servers, setServers] = useState<Server[]>([]),
+  const [servers, setServers] = useState<Server[] | null>(null),
+    [serverError, setServerError] = useState(""),
     [dark, setDark] = useState(false),
     [profile, setProfile] = useState(false);
-  async function refresh() {
+  const refreshSequence = useRef(0);
+  const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     try {
       const w = await api<TeamWorkspace>("/chat/workspace");
+      if (sequence !== refreshSequence.current) return;
       setWorkspace(w);
       setSignedOut(false);
       setError("");
-      if (w.me.role === "owner" && section === "servers")
-        setServers((await api<{ servers: Server[] }>("/workspace")).servers);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setSignedOut(true);
-      else setError((e as Error).message);
+      if (sequence !== refreshSequence.current) return;
+      if (e instanceof ApiError && e.status === 401) {
+        setSignedOut(true);
+        setWorkspace(null);
+        setServers(null);
+      } else setError((e as Error).message);
     }
-  }
+  }, []);
   useEffect(() => {
     void refresh();
     setDark(document.documentElement.classList.contains("dark"));
-  }, [section]);
+  }, [refresh, section]);
+  async function refreshServers() {
+    setServerError("");
+    try {
+      setServers((await api<{ servers: Server[] }>("/workspace")).servers);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) void refresh();
+      else setServerError((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    if (workspace?.me.role === "owner" && section === "servers")
+      void refreshServers();
+  }, [section, workspace?.me.id, workspace?.me.role]);
   if (signedOut) return <Login onLogin={() => void refresh()} />;
-  if (!workspace)
-    return (
-      <main className="settings-loading">
-        {error ? (
-          <>
-            <p role="alert">{error}</p>
-            <Button onClick={() => void refresh()}>Retry</Button>
-          </>
-        ) : (
-          "Loading…"
-        )}
-      </main>
-    );
-  if (workspace.me.role !== "owner")
-    return (
-      <main className="settings-loading">
-        <h1>Workspace settings</h1>
-        <p>Only the workspace owner can manage these settings.</p>
-        <a href="/">Back to workspace</a>
-      </main>
-    );
   const title = groups
     .flatMap((g) => g.items)
     .find((i) => i.id === section)?.label;
   return (
     <div className="workspace-settings-page">
       <aside className="workspace-settings-nav">
-        <a className="workspace-brand" href="/">
-          <span>{workspace.name}</span>
+        <Link className="workspace-brand" href="/">
+          <span>{workspace?.name || <Skeleton className="h-4 w-24" />}</span>
           <Mark />
-        </a>
-        <a className="settings-back" href="/">
+        </Link>
+        <Link className="settings-back" href="/">
           <ArrowLeft size={16} />
           Back to workspace
-        </a>
+        </Link>
         <nav aria-label="Workspace settings">
           {groups.map((g, i) => (
             <div className="settings-nav-group" key={i}>
               {g.label && <span>{g.label}</span>}
               {g.items.map((item) => (
-                <a
+                <Link
                   key={item.id}
                   href={
                     "/settings/workspace" +
@@ -127,7 +131,7 @@ export function WorkspaceSettingsPage({ section }: { section: string }) {
                   aria-current={section === item.id ? "page" : undefined}
                 >
                   {item.label}
-                </a>
+                </Link>
               ))}
             </div>
           ))}
@@ -135,6 +139,7 @@ export function WorkspaceSettingsPage({ section }: { section: string }) {
         <Button
           variant="ghost"
           className="settings-profile-link"
+          disabled={!workspace}
           onClick={() => setProfile(true)}
         >
           Profile settings
@@ -162,60 +167,100 @@ export function WorkspaceSettingsPage({ section }: { section: string }) {
           <p className="settings-intro">
             {details[section] || "Choose a settings page from the navigation."}
           </p>
-          {error && <p role="alert">{error}</p>}
-          {section === "general" && (
-            <GeneralSettings workspace={workspace} onChange={refresh} />
+          {error && (
+            <p role="alert">
+              {error}{" "}
+              <Button variant="outline" onClick={() => void refresh()}>
+                Retry
+              </Button>
+            </p>
           )}
-          {section === "members" && (
-            <TeamSettings
-              embedded
-              section="members"
-              open
-              onOpenChange={() => {}}
-              workspace={workspace}
-              onChange={refresh}
-            />
-          )}
-          {(["github", "cloudflare", "llm", "custom"] as const).map(
-            (group) =>
-              section === group && (
-                <ConnectionsSettings
-                  key={group}
-                  group={group}
+          {!workspace ? (
+            !error && (
+              <SettingsSkeleton
+                kind={
+                  section === "general"
+                    ? "form"
+                    : section === "usage"
+                      ? "usage"
+                      : "list"
+                }
+              />
+            )
+          ) : workspace.me.role !== "owner" ? (
+            <p>Only the workspace owner can manage these settings.</p>
+          ) : (
+            <>
+              {section === "general" && (
+                <GeneralSettings workspace={workspace} onChange={refresh} />
+              )}
+              {section === "members" && (
+                <TeamSettings
+                  embedded
+                  section="members"
+                  open
+                  onOpenChange={() => {}}
                   workspace={workspace}
+                  onChange={refresh}
                 />
-              ),
-          )}
-          {section === "servers" && (
-            <ServerSettings
-              embedded
-              open
-              onOpenChange={() => {}}
-              servers={servers}
-              onChange={refresh}
-            />
-          )}
-          {section === "bots" && (
-            <TeamSettings
-              embedded
-              section="integrations"
-              open
-              onOpenChange={() => {}}
-              workspace={workspace}
-              onChange={refresh}
-            />
-          )}
-          {section === "usage" && (
-            <UsageDialog embedded open onOpenChange={() => {}} />
+              )}
+              {(["github", "cloudflare", "llm", "custom"] as const).map(
+                (group) =>
+                  section === group && (
+                    <ConnectionsSettings
+                      key={group}
+                      group={group}
+                      workspace={workspace}
+                    />
+                  ),
+              )}
+              {section === "servers" &&
+                (serverError ? (
+                  <p role="alert">
+                    {serverError}{" "}
+                    <Button
+                      variant="outline"
+                      onClick={() => void refreshServers()}
+                    >
+                      Retry
+                    </Button>
+                  </p>
+                ) : servers === null ? (
+                  <SettingsSkeleton />
+                ) : (
+                  <ServerSettings
+                    embedded
+                    open
+                    onOpenChange={() => {}}
+                    servers={servers}
+                    onChange={refreshServers}
+                  />
+                ))}
+              {section === "bots" && (
+                <TeamSettings
+                  embedded
+                  section="integrations"
+                  open
+                  onOpenChange={() => {}}
+                  workspace={workspace}
+                  onChange={refresh}
+                />
+              )}
+              {section === "usage" && (
+                <UsageDialog embedded open onOpenChange={() => {}} />
+              )}
+            </>
           )}
         </div>
       </main>
-      <TeamSettings
-        open={profile}
-        onOpenChange={setProfile}
-        workspace={workspace}
-        onChange={refresh}
-      />
+      {workspace && (
+        <TeamSettings
+          open={profile}
+          onOpenChange={setProfile}
+          workspace={workspace}
+          onChange={refresh}
+        />
+      )}
     </div>
   );
 }

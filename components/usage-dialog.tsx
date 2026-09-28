@@ -1,4 +1,6 @@
 "use client";
+import { SettingsSkeleton } from "./loading-states";
+import { Button } from "./ui/button";
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -39,6 +41,9 @@ export function UsageDialog({
   threadId?: string;
   serverId?: string;
 }) {
+  const scope = JSON.stringify([roomId, threadId, serverId]);
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [totals, setTotals] = useState({
     input_tokens: 0,
     output_tokens: 0,
@@ -47,11 +52,12 @@ export function UsageDialog({
   const [limited, setLimited] = useState(false);
   const [rows, setRows] = useState<Row[]>([]),
     [error, setError] = useState(""),
-    [loading, setLoading] = useState(false);
+    [loading, setLoading] = useState(true);
   useEffect(() => {
     if (!open) return;
     let live = true;
     setLoading(true);
+    setError("");
     const params = new URLSearchParams();
     if (roomId) params.set("room", roomId);
     if (threadId) params.set("thread", threadId);
@@ -61,6 +67,7 @@ export function UsageDialog({
     )
       .then((r) => {
         if (live) {
+          setLoadedScope(scope);
           setRows(r.rows);
           setTotals(r.totals);
           setLimited(r.limited);
@@ -76,18 +83,28 @@ export function UsageDialog({
     return () => {
       live = false;
     };
-  }, [open, roomId, threadId, serverId]);
+  }, [open, roomId, threadId, serverId, scope, attempt]);
   const count = (key: "input_tokens" | "output_tokens" | "cached_tokens") =>
     totals[key].toLocaleString();
   const content = (
     <>
-      {error ? (
-        <p role="alert">{error}</p>
-      ) : loading ? (
-        <p>Loading…</p>
+      {error && (
+        <p role="alert">
+          {error}{" "}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAttempt((v) => v + 1)}
+          >
+            Retry
+          </Button>
+        </p>
+      )}
+      {loadedScope !== scope ? (
+        !error && <SettingsSkeleton kind="usage" />
       ) : (
         <>
-          <div className="usage-totals">
+          <div className="usage-totals" aria-busy={loading}>
             <span>
               <strong>{count("input_tokens")}</strong>Input
             </span>

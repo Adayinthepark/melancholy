@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { SettingsSkeleton } from "./loading-states";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,7 @@ export function ConnectionsSettings({
     [grants, setGrants] = useState<Record<string, boolean>>({}),
     [grantLoading, setGrantLoading] = useState(false),
     [grantError, setGrantError] = useState("");
+  const accessSeq = useRef(0);
   const service = provider === "github" || provider === "cloudflare";
   const preset = providerPresets[provider as CredentialProvider];
   async function refresh() {
@@ -120,6 +122,7 @@ export function ConnectionsSettings({
     }
   }
   async function openAccess(c: Connection) {
+    const sequence = ++accessSeq.current;
     setAccess(c);
     setGrantLoading(true);
     setGrantError("");
@@ -138,11 +141,12 @@ export function ConnectionsSettings({
             ] as const;
           }),
       );
-      setGrants(Object.fromEntries(entries));
+      if (sequence === accessSeq.current)
+        setGrants(Object.fromEntries(entries));
     } catch (e) {
-      setGrantError((e as Error).message);
+      if (sequence === accessSeq.current) setGrantError((e as Error).message);
     } finally {
-      setGrantLoading(false);
+      if (sequence === accessSeq.current) setGrantLoading(false);
     }
   }
   const visible = connections.filter((c) =>
@@ -170,7 +174,7 @@ export function ConnectionsSettings({
           </Button>
         </p>
       ) : loading ? (
-        <p>Loading…</p>
+        <SettingsSkeleton />
       ) : !visible.length ? (
         <p className="settings-empty">No credentials added.</p>
       ) : (
@@ -507,7 +511,10 @@ export function ConnectionsSettings({
       <Dialog
         open={!!access}
         onOpenChange={(v) => {
-          if (!v) setAccess(null);
+          if (!v) {
+            accessSeq.current++;
+            setAccess(null);
+          }
         }}
       >
         <DialogContent className="credential-dialog">
@@ -519,7 +526,7 @@ export function ConnectionsSettings({
             </DialogDescription>
           </DialogHeader>
           {grantLoading ? (
-            <p>Loading…</p>
+            <SettingsSkeleton />
           ) : grantError ? (
             <p role="alert">{grantError}</p>
           ) : (
@@ -542,17 +549,23 @@ export function ConnectionsSettings({
                       aria-pressed={!!grants[r.id]}
                       onClick={async () => {
                         setBusy(true);
+                        const sequence = accessSeq.current;
+                        const enabled = !grants[r.id];
                         try {
                           await api(
                             `/chat/rooms/${r.id}/connections/${access!.id}`,
                             {
                               method: "PUT",
                               body: JSON.stringify({
-                                agentEnabled: !grants[r.id],
+                                agentEnabled: enabled,
                               }),
                             },
                           );
-                          await openAccess(access!);
+                          if (sequence === accessSeq.current)
+                            setGrants((current) => ({
+                              ...current,
+                              [r.id]: enabled,
+                            }));
                         } catch (e) {
                           toast.error((e as Error).message);
                         } finally {

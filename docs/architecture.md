@@ -141,6 +141,15 @@ the HTTP acknowledgement; inbox invalidation and agent dispatch use `waitUntil`.
 The existing minute recovery job retries durable agent requests after interruption.
 Pending drafts are memory-only; reloading discards an unsent draft.
 
+Workspace settings live in a shared App Router layout. Client navigation keeps
+its sidebar and authenticated workspace data mounted while each section loads
+its own content. Section changes revalidate workspace metadata in the background;
+only an unauthorized response returns the user to login. Skeletons match the
+content region rather than replacing the page. Credential values are not cached.
+Channel and thread message requests have separate loading state and request
+sequences: opening a thread preserves the channel, and late responses cannot
+replace another room or thread. Read markers only use the loaded room's messages.
+
 Provider tokens and custom credential bundles are encrypted with AES-GCM, random 96-bit IVs and the
 connection ID as authenticated context. `INTEGRATIONS_KEY` is a dedicated Worker
 secret. Only the owner can manage connections, link repositories, approve bot

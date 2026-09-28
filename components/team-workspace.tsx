@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { MessagesSkeleton, WorkspaceSkeleton } from "./loading-states";
 import {
   Hash,
   Lock,
@@ -25,7 +27,6 @@ import { Mark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
   Dialog,
@@ -111,7 +112,8 @@ export function TeamWorkspaceApp({
     [root, setRoot] = useState<TeamMessage | null>(null),
     [page, setPage] = useState<MessagePage>(emptyPage),
     [replies, setReplies] = useState<MessagePage>(emptyPage),
-    [loading, setLoading] = useState(false);
+    [loading, setLoading] = useState(false),
+    [loadedRoom, setLoadedRoom] = useState("");
   const [mobile, setMobile] = useState(false),
     [dark, setDark] = useState(false),
     [connection, setConnection] = useState("connecting"),
@@ -132,6 +134,8 @@ export function TeamWorkspaceApp({
     [searching, setSearching] = useState(false);
   const active = useRef({ roomId, threadId }),
     refreshSeq = useRef(0),
+    channelSeq = useRef(0),
+    threadSeq = useRef(0),
     latestRefresh = useRef<() => Promise<void>>(async () => {}),
     readSeq = useRef<Record<string, number>>({}),
     [unreadAnchor, setUnreadAnchor] = useState(0),
@@ -183,60 +187,81 @@ export function TeamWorkspaceApp({
   }, [focusedThread, signedIn]);
   const current = workspace?.rooms.find((r) => r.id === roomId),
     admin = workspace?.me.role === "owner";
-  const load = useCallback(
+  const loadChannel = useCallback(
     async (reset = false) => {
       if (!roomId || !signedIn) return;
-      const selection = roomId + ":" + (threadId || "");
+      const sequence = ++channelSeq.current;
       try {
-        const [messages, threadRoot, threadReplies] = await Promise.all([
-          api<MessagePage>("/chat/rooms/" + roomId + "/messages"),
-          threadId
-            ? api<{ message: TeamMessage }>("/chat/messages/" + threadId)
-            : null,
-          threadId
-            ? api<MessagePage>(
-                "/chat/rooms/" + roomId + "/messages?parent=" + threadId,
-              )
-            : null,
-        ]);
-        if (
-          active.current.roomId + ":" + (active.current.threadId || "") !==
-          selection
-        )
+        const messages = await api<MessagePage>(
+          "/chat/rooms/" + roomId + "/messages",
+        );
+        if (active.current.roomId !== roomId || sequence !== channelSeq.current)
           return;
         setPage((p) => (reset ? messages : merged(p, messages)));
-        if (threadRoot) {
-          setRoot(threadRoot.message);
-          setReplies((p) =>
-            reset ? threadReplies! : merged(p, threadReplies!),
-          );
-        }
+        setLoadedRoom(roomId);
         setLoading(false);
       } catch (e) {
-        if (active.current.roomId !== roomId) return;
+        if (active.current.roomId !== roomId || sequence !== channelSeq.current)
+          return;
         setLoading(false);
         if (e instanceof ApiError && e.status === 401) void refresh();
         else {
           toast.error((e as Error).message);
-          if (threadId) {
-            setThreadId(null);
-            setRoot(null);
-          } else void refresh();
+          void refresh();
+        }
+      }
+    },
+    [roomId, signedIn, refresh],
+  );
+  const loadThread = useCallback(
+    async (reset = false) => {
+      if (!roomId || !threadId || !signedIn) return;
+      const sequence = ++threadSeq.current;
+      const isCurrent = () =>
+        active.current.roomId === roomId &&
+        active.current.threadId === threadId &&
+        sequence === threadSeq.current;
+      try {
+        const [threadRoot, threadReplies] = await Promise.all([
+          api<{ message: TeamMessage }>("/chat/messages/" + threadId),
+          api<MessagePage>(
+            "/chat/rooms/" + roomId + "/messages?parent=" + threadId,
+          ),
+        ]);
+        if (!isCurrent()) return;
+        setRoot(threadRoot.message);
+        setReplies((p) => (reset ? threadReplies : merged(p, threadReplies)));
+      } catch (e) {
+        if (!isCurrent()) return;
+        if (e instanceof ApiError && e.status === 401) void refresh();
+        else {
+          toast.error((e as Error).message);
+          setThreadId(null);
+          setRoot(null);
         }
       }
     },
     [roomId, threadId, signedIn, refresh],
   );
   latestRefresh.current = async () => {
-    await Promise.all([refresh(), load()]);
+    await Promise.all([refresh(), loadChannel(), loadThread()]);
   };
   useEffect(() => {
     setPage(emptyPage);
+    setLoading(true);
+    void loadChannel(true);
+    return () => {
+      channelSeq.current++;
+    };
+  }, [loadChannel]);
+  useEffect(() => {
     setRoot(null);
     setReplies(emptyPage);
-    setLoading(true);
-    void load(true);
-  }, [load]);
+    void loadThread(true);
+    return () => {
+      threadSeq.current++;
+    };
+  }, [loadThread]);
   useEffect(() => {
     if (current && anchorRoom.current !== current.id) {
       anchorRoom.current = current.id;
@@ -305,6 +330,7 @@ export function TeamWorkspaceApp({
       !signedIn ||
       !current?.joined ||
       !page.latest ||
+      loadedRoom !== roomId ||
       document.visibilityState !== "visible" ||
       (readSeq.current[roomId] || 0) >= page.latest
     )
@@ -325,7 +351,7 @@ export function TeamWorkspaceApp({
         );
       })
       .catch(() => {});
-  }, [page.latest, roomId, signedIn, current?.joined, focusTick]);
+  }, [page.latest, roomId, loadedRoom, signedIn, current?.joined, focusTick]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -402,7 +428,11 @@ export function TeamWorkspaceApp({
           before +
           (thread ? "&parent=" + threadId : ""),
       );
-      if (active.current.roomId !== requestedRoom) return;
+      if (
+        active.current.roomId !== requestedRoom ||
+        (thread && active.current.threadId !== threadId)
+      )
+        return;
       const apply = (p: MessagePage) => ({
         ...p,
         hasMore: next.hasMore,
@@ -430,22 +460,7 @@ export function TeamWorkspaceApp({
   }
   if (signedIn === false) return <Login onLogin={() => void refresh()} />;
   if (!workspace)
-    return (
-      <main className="team-loading">
-        {error ? (
-          <>
-            <p>{error}</p>
-            <Button onClick={() => void refresh()}>Retry</Button>
-          </>
-        ) : (
-          <>
-            <span className="workspace-name">melancholy</span>
-            <Skeleton className="h-4 w-36" />
-            <Skeleton className="h-3 w-24" />
-          </>
-        )}
-      </main>
-    );
+    return <WorkspaceSkeleton error={error} onRetry={() => void refresh()} />;
   const me = workspace.me;
   const visibleMessages = [
     ...page.messages,
@@ -654,10 +669,10 @@ export function TeamWorkspaceApp({
               </DropdownMenuItem>
               {me.role === "owner" && (
                 <DropdownMenuItem asChild>
-                  <a href="/settings/workspace">
+                  <Link href="/settings/workspace">
                     <Settings2 />
                     Workspace settings
-                  </a>
+                  </Link>
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
@@ -783,11 +798,8 @@ export function TeamWorkspaceApp({
           <section className="team-channel" aria-label="Channel messages">
             {current ? (
               <>
-                {loading ? (
-                  <div className="chat-loading">
-                    <Skeleton className="h-4 w-40" />
-                    <Skeleton className="h-4 w-64" />
-                  </div>
+                {loading || loadedRoom !== roomId ? (
+                  <MessagesSkeleton />
                 ) : visibleMessages.length ? (
                   <ChatTimeline
                     messages={visibleMessages}
@@ -875,7 +887,7 @@ export function TeamWorkspaceApp({
                   <X />
                 </Button>
               </header>
-              {root ? (
+              {root && root.id === threadId && root.room_id === roomId ? (
                 <ChatTimeline
                   messages={[root, ...visibleReplies]}
                   onRetry={retryMessage}
@@ -887,9 +899,7 @@ export function TeamWorkspaceApp({
                   thread
                 />
               ) : (
-                <div className="chat-loading">
-                  <Skeleton className="h-4 w-40" />
-                </div>
+                <MessagesSkeleton />
               )}
               {current.joined && (
                 <ChatComposer
@@ -1172,7 +1182,7 @@ export function TeamWorkspaceApp({
                 {current.members.map((p) => (
                   <div key={p.id} className="person-row">
                     <PersonAvatar person={p} />
-                    <div>
+                    <div className="person-details">
                       <strong>{p.name}</strong>
                       <span>
                         @{p.handle}

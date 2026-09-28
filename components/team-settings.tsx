@@ -1,4 +1,5 @@
 "use client";
+import { SettingsSkeleton } from "./loading-states";
 import { useEffect, useState } from "react";
 import { Copy, Plus, Server, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -92,12 +93,19 @@ export function TeamSettings({
     [kind, setKind] = useState("api"),
     [roomId, setRoomId] = useState("*"),
     [credential, setCredential] = useState(""),
-    [tokens, setTokens] = useState<Token[]>([]);
+    [tokens, setTokens] = useState<Token[] | null>(null),
+    [tokenError, setTokenError] = useState("");
   const admin = workspace.me.role === "owner",
     bots = workspace.people.filter((p) => p.kind === "bot");
   async function refreshTokens() {
-    if (admin && section === "integrations")
-      setTokens((await api<{ tokens: Token[] }>("/chat/tokens")).tokens);
+    if (admin && section === "integrations") {
+      setTokenError("");
+      try {
+        setTokens((await api<{ tokens: Token[] }>("/chat/tokens")).tokens);
+      } catch (e) {
+        setTokenError((e as Error).message);
+      }
+    }
   }
   useEffect(() => {
     if (open) {
@@ -278,7 +286,7 @@ export function TeamSettings({
               .map((p) => (
                 <div key={p.id} className="person-row">
                   <PersonAvatar person={p} />
-                  <div>
+                  <div className="person-details">
                     <strong>{p.name}</strong>
                     <span>@{p.handle}</span>
                   </div>
@@ -324,7 +332,7 @@ export function TeamSettings({
             {bots.map((p) => (
               <div key={p.id} className="person-row">
                 <PersonAvatar person={p} />
-                <div>
+                <div className="person-details">
                   <strong>{p.name}</strong>
                   <span>@{p.handle}</span>
                 </div>
@@ -480,13 +488,28 @@ export function TeamSettings({
               )}
             </>
           )}
-          {tokens.length > 0 && (
+          {tab === "integrations" && tokenError && (
+            <p role="alert">
+              {tokenError}{" "}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void refreshTokens()}
+              >
+                Retry
+              </Button>
+            </p>
+          )}
+          {tab === "integrations" && tokens === null && !tokenError && (
+            <SettingsSkeleton />
+          )}
+          {!!tokens?.length && (
             <>
               <Separator />
               <div className="settings-member-list">
-                {tokens.map((t) => (
+                {tokens!.map((t) => (
                   <div key={t.id} className="person-row">
-                    <div>
+                    <div className="person-details">
                       <strong>
                         {bots.find((p) => p.id === t.bot_id)?.name || "Bot"}
                       </strong>

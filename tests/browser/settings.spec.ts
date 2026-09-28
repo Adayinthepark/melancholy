@@ -64,6 +64,9 @@ test("workspace settings are separate from profiles and manage encrypted credent
     await page
       .getByRole("link", { name: "Custom credentials", exact: true })
       .click();
+    await expect(
+      page.getByRole("heading", { name: "Custom credentials", exact: true }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "Add credential", exact: true })
       .click();
@@ -130,6 +133,9 @@ test("workspace settings are separate from profiles and manage encrypted credent
       fullPage: true,
     });
     await page.getByRole("link", { name: "LLM keys", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "LLM keys", exact: true }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "Add credential", exact: true })
       .click();

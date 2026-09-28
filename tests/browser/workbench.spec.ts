@@ -65,6 +65,7 @@ test("profile, Inter, named mentions, server rename and focused thread work acro
   ).json();
   const newHandle = "owner" + Date.now();
   const agentName = "Focus agent " + Date.now();
+  const renamedServer = agentName + " renamed";
   const server = await (
     await context.request.post("/api/servers", {
       headers,
@@ -168,12 +169,13 @@ test("profile, Inter, named mentions, server rename and focused thread work acro
     await page
       .getByRole("button", { name: "Rename " + agentName, exact: true })
       .click();
-    await page
-      .getByLabel("Rename server", { exact: true })
-      .fill("Project server");
+    await page.getByLabel("Rename server", { exact: true }).fill(renamedServer);
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(
-      page.getByRole("button", { name: "Rename Project server", exact: true }),
+      page.getByRole("button", {
+        name: "Rename " + renamedServer,
+        exact: true,
+      }),
     ).toBeVisible();
     expect(errors).toEqual([]);
   } finally {

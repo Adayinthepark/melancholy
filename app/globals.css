@@ -1584,8 +1584,12 @@
   gap: 12px;
   padding: 10px 0;
 }
-.person-row > div {
+.person-row > .person-details {
+  flex: 1;
   min-width: 0;
+}
+.person-row > :not(.person-details) {
+  flex-shrink: 0;
 }
 .person-row strong {
   display: block;
@@ -1593,7 +1597,7 @@
   font-weight: 500;
   overflow-wrap: anywhere;
 }
-.person-row span {
+.person-row .person-details span {
   display: block;
   font-size: 11px;
   color: var(--muted-foreground);
@@ -2359,4 +2363,40 @@
   .workspace-settings-content .usage-table {
     max-width: 100%;
   }
+}
+
+/* Loading occupies the surface that will receive the content. */
+.settings-skeleton {
+  min-height: 200px;
+}
+.loading-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.loading-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 28px 10px;
+}
+.loading-composer {
+  padding: 16px 22px;
+}
+.workspace-placeholder .workspace-brand {
+  min-height: 56px;
+}
+.workspace-settings-content .settings-section > button {
+  align-self: flex-start;
+}
+@media (max-width: 700px) {
+  .workspace-placeholder .team-sidebar {
+    display: none;
+  }
+}
+.workspace-settings-content .settings-member-list {
+  max-height: none;
+  overflow: visible;
 }

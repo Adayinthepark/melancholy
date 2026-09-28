@@ -126,7 +126,7 @@ export function UsageDialog({
               <table>
                 <thead>
                   <tr>
-                    <th>Server / model</th>
+                    <th>Runtime / model</th>
                     <th>Conversation</th>
                     <th>Runs</th>
                     <th>Input</th>
@@ -138,7 +138,9 @@ export function UsageDialog({
                   {rows.map((r, i) => (
                     <tr key={i}>
                       <td>
-                        {r.server_name || "Removed server"}
+                        {r.runtime === "pi"
+                          ? "Cloudflare · Pi"
+                          : r.server_name || "Removed server"}
                         <small>{r.model || r.runtime}</small>
                       </td>
                       <td>

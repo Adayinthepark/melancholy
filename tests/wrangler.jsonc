@@ -9,7 +9,11 @@
     "WORKSPACE_KEY": "test-workspace-key-that-is-long-enough-for-tests",
   },
   "d1_databases": [
-    { "binding": "MIGRATION_DB", "database_name": "migration-test", "database_id": "11111111-1111-1111-1111-111111111111" },
+    {
+      "binding": "MIGRATION_DB",
+      "database_name": "migration-test",
+      "database_id": "11111111-1111-1111-1111-111111111111",
+    },
     {
       "binding": "DB",
       "database_name": "test",
@@ -17,16 +21,19 @@
     },
   ],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "test-files" }],
+  "worker_loaders": [{ "binding": "LOADER" }],
   "durable_objects": {
     "bindings": [
       { "name": "CONVERSATIONS", "class_name": "Conversation" },
       { "name": "CONNECTORS", "class_name": "Connector" },
       { "name": "INBOXES", "class_name": "Inbox" },
       { "name": "CHAT_DISPATCHERS", "class_name": "ChatDispatcher" },
+      { "name": "CLOUD_AGENTS", "class_name": "CloudAgent" },
     ],
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["Conversation", "Connector"] },
     { "tag": "v2", "new_sqlite_classes": ["Inbox", "ChatDispatcher"] },
+    { "tag": "v3", "new_sqlite_classes": ["CloudAgent"] },
   ],
 }

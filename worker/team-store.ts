@@ -4,7 +4,7 @@ import type { Person, TeamMessage } from "../lib/chat";
 import type { Attachment } from "../lib/protocol";
 import type { Identity } from "./team-auth";
 export const personColumns =
-  "id,handle,name,kind,role,active,server_id,avatar_key";
+  "id,handle,name,kind,role,active,server_id,avatar_key,cloud_agent";
 export type StoredChat = Omit<
   TeamMessage,
   | "attachments"

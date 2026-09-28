@@ -7,6 +7,7 @@ export type Person = {
   role: "owner" | "member";
   active: number;
   server_id: string | null;
+  cloud_agent?: number;
   avatar_key?: string | null;
 };
 export type Room = {

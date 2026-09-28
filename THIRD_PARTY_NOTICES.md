@@ -2,6 +2,11 @@
 
 Project source is MIT licensed unless a file states otherwise.
 
+- Cloud agents use [Pi](https://github.com/badlogic/pi-mono) (MIT),
+  [Cloudflare Agents SDK](https://github.com/cloudflare/agents) (MIT),
+  [Cloudflare Computer](https://github.com/cloudflare/computer) (MIT), and
+  [just-bash](https://github.com/vercel-labs/just-bash) (Apache-2.0).
+
 - UI primitives are derived from [shadcn/ui](https://github.com/shadcn-ui/ui),
   MIT License, copyright shadcn. The components remain in `components/ui`.
 - Inter is copyright The Inter Project Authors and licensed under the SIL Open

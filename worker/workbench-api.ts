@@ -142,7 +142,7 @@ export async function workbench(
       if (
         input.botId &&
         !(await env.DB.prepare(
-          "SELECT 1 FROM people p JOIN room_members m ON m.person_id=p.id WHERE p.id=? AND p.kind='bot' AND p.server_id IS NOT NULL AND p.active=1 AND m.room_id=?",
+          "SELECT 1 FROM people p JOIN room_members m ON m.person_id=p.id WHERE p.id=? AND p.kind='bot' AND (p.server_id IS NOT NULL OR p.cloud_agent=1) AND p.active=1 AND m.room_id=?",
         )
           .bind(input.botId, root.room_id)
           .first())

@@ -55,6 +55,13 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
       )
       .toArray().length;
   }
+  hasActiveRun() {
+    return (
+      this.ctx.storage.sql
+        .exec("SELECT 1 FROM runs WHERE status IN ('queued','running') LIMIT 1")
+        .toArray().length > 0
+    );
+  }
   async send(input: {
     threadId: string;
     serverId: string;
@@ -181,9 +188,15 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
       )
       .toArray();
     for (const run of pending) {
-      await this.env.CONNECTORS.getByName(run.server_id).submit(
-        JSON.parse(run.job) as Job,
-      );
+      if (run.runtime === "pi") {
+        await this.env.CLOUD_AGENTS.getByName(
+          (JSON.parse(run.job) as Job).threadId,
+        ).submit(JSON.parse(run.job) as Job);
+      } else {
+        await this.env.CONNECTORS.getByName(run.server_id).submit(
+          JSON.parse(run.job) as Job,
+        );
+      }
       this.ctx.storage.sql.exec(
         "UPDATE runs SET dispatched=1 WHERE id=?",
         run.id,
@@ -383,10 +396,16 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
       .toArray()[0];
     if (!run) return;
     // Cancel in the relay even when the initial room-to-relay dispatch is still in flight.
-    await this.env.CONNECTORS.getByName(run.server_id).cancel(
-      run.id,
-      JSON.parse(run.job) as Job,
-    );
+    if (run.runtime === "pi") {
+      await this.env.CLOUD_AGENTS.getByName(
+        (JSON.parse(run.job) as Job).threadId,
+      ).stop(run.id);
+    } else {
+      await this.env.CONNECTORS.getByName(run.server_id).cancel(
+        run.id,
+        JSON.parse(run.job) as Job,
+      );
+    }
     await this.receive(run.id, run.event_seq + 1, { type: "cancelled" });
   }
   async alarm() {

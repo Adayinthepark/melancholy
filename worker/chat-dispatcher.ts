@@ -17,7 +17,7 @@ export class ChatDispatcher extends DurableObject<Cloudflare.Env> {
     this.flushing = true;
     try {
       const rows = await this.env.DB.prepare(
-        `SELECT a.message_id,a.bot_id,a.thread_id,m.text,m.parent_id,m.attachments,m.deleted_at,p.server_id,s.runtime,t.root_id FROM agent_requests a JOIN chat_messages m ON m.id=a.message_id JOIN people p ON p.id=a.bot_id LEFT JOIN servers s ON s.id=p.server_id JOIN agent_threads t ON t.thread_id=a.thread_id WHERE t.room_id=? AND a.dispatched=0 ORDER BY m.seq LIMIT 20`,
+        `SELECT a.message_id,a.bot_id,a.thread_id,m.text,m.parent_id,m.attachments,m.deleted_at,p.server_id,p.cloud_agent,s.runtime,t.root_id FROM agent_requests a JOIN chat_messages m ON m.id=a.message_id JOIN people p ON p.id=a.bot_id LEFT JOIN servers s ON s.id=p.server_id JOIN agent_threads t ON t.thread_id=a.thread_id WHERE t.room_id=? AND a.dispatched=0 ORDER BY m.seq LIMIT 20`,
       )
         .bind(roomId)
         .all<{
@@ -29,6 +29,7 @@ export class ChatDispatcher extends DurableObject<Cloudflare.Env> {
           attachments: string;
           deleted_at: number | null;
           server_id: string | null;
+          cloud_agent: number;
           runtime: Runtime;
           root_id: string;
         }>();
@@ -38,7 +39,11 @@ export class ChatDispatcher extends DurableObject<Cloudflare.Env> {
         )
           .bind(roomId, row.bot_id)
           .first();
-        if (!row.server_id || !allowed || row.deleted_at) {
+        if (
+          (!row.server_id && !row.cloud_agent) ||
+          !allowed ||
+          row.deleted_at
+        ) {
           await this.finish(row, "Bot is unavailable.");
           continue;
         }
@@ -46,8 +51,8 @@ export class ChatDispatcher extends DurableObject<Cloudflare.Env> {
           row.thread_id,
         ).send({
           threadId: row.thread_id,
-          serverId: row.server_id,
-          runtime: row.runtime,
+          serverId: row.server_id || "cloud:" + row.bot_id,
+          runtime: row.cloud_agent ? "pi" : row.runtime,
           text: mentionText(
             row.text,
             (

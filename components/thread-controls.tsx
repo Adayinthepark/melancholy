@@ -33,7 +33,9 @@ export function ThreadControls({
       live = false;
     };
   }, [id]);
-  const options = people.filter((p) => p.kind === "bot" && p.server_id);
+  const options = people.filter(
+    (p) => p.kind === "bot" && (p.server_id || p.cloud_agent),
+  );
   return (
     <div className="thread-controls">
       {options.length > 0 && (

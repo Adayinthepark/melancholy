@@ -1,4 +1,4 @@
-export type Runtime = "codex" | "claude";
+export type Runtime = "codex" | "claude" | "pi";
 export type RunStatus =
   "queued" | "running" | "completed" | "failed" | "cancelled";
 export type Server = {

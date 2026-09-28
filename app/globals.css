@@ -2166,6 +2166,16 @@
   max-height: none;
   overflow: visible;
 }
+.bot-settings-form {
+  width: 100%;
+  max-width: 580px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+.bot-settings-form [data-slot="field-group"] > button {
+  align-self: flex-start;
+  width: auto;
+}
 
 /* Motion responds to navigation while message and composer DOM stay mounted. */
 .team-conversation-layout {

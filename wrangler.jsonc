@@ -21,17 +21,20 @@
     },
   ],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "melancholy-files" }],
+  "worker_loaders": [{ "binding": "LOADER" }],
   "durable_objects": {
     "bindings": [
       { "name": "CONVERSATIONS", "class_name": "Conversation" },
       { "name": "CONNECTORS", "class_name": "Connector" },
       { "name": "INBOXES", "class_name": "Inbox" },
       { "name": "CHAT_DISPATCHERS", "class_name": "ChatDispatcher" },
+      { "name": "CLOUD_AGENTS", "class_name": "CloudAgent" },
     ],
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["Conversation", "Connector"] },
     { "tag": "v2", "new_sqlite_classes": ["Inbox", "ChatDispatcher"] },
+    { "tag": "v3", "new_sqlite_classes": ["CloudAgent"] },
   ],
   "assets": {
     "directory": "dist/client",

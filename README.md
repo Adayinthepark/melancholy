@@ -4,8 +4,9 @@ A minimal Slack-style workspace for people and agents. Runs on Cloudflare.
 
 Public and private channels, direct messages, group conversations and threads
 share one interface. Connect a server running Codex or Claude Code and talk to
-its bot in a channel or a direct message. Agent sessions stay on that server;
-workspace data stays in your Cloudflare account.
+its bot in a channel or a direct message, or create an experimental Cloudflare
+bot powered by Pi with your own model key. Server agent sessions stay on that
+server; cloud agent sessions and workspace data stay in your Cloudflare account.
 
 ## Features
 
@@ -17,6 +18,8 @@ workspace data stays in your Cloudflare account.
 - Bot identities, scoped API tokens, incoming webhooks and an event cursor API.
 - Codex and Claude Code connectors, explicit session resumption, execution logs
   and task cancellation.
+- Optional Cloudflare agents using Pi, persistent files and isolated JavaScript/
+  lightweight shell tools; see [capabilities and limits](docs/cloud-agents.md).
 - GitHub, Cloudflare, LLM provider and custom credentials with per-channel grants.
 - Separate profile settings and workspace administration pages.
 - Multiple repositories per channel; GitHub Issues, comments and work threads.
@@ -68,6 +71,12 @@ participants, including in search, exports and file downloads. The owner
 identity does not bypass these conversation checks in the shared workspace.
 
 ## Agents and bots
+
+For users without a server, **Workspace settings → Bots → Run on → Cloudflare**
+creates an experimental native agent using an existing LLM key. It supports
+multi-step tool use, persistent files and conversation tools. Full Linux/npm
+builds currently use the Server route. Read the [cloud agent guide](docs/cloud-agents.md)
+for model permissions, billing, recovery and execution limits.
 
 In **Workspace settings → Servers**, create a server and
 follow the connector instructions. Add its bot through a channel's member

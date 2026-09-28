@@ -1,4 +1,6 @@
 "use client";
+import { Textarea } from "./ui/textarea";
+import Link from "next/link";
 import { SettingsSkeleton } from "./loading-states";
 import { DeviceSettings } from "./device-settings";
 import { useEffect, useState } from "react";
@@ -96,8 +98,73 @@ export function TeamSettings({
     [credential, setCredential] = useState(""),
     [tokens, setTokens] = useState<Token[] | null>(null),
     [tokenError, setTokenError] = useState("");
+  const [execution, setExecution] = useState("api");
+  const [editingBot, setEditingBot] = useState("");
+  const [modelKey, setModelKey] = useState("");
+  const [modelName, setModelName] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [maxSteps, setMaxSteps] = useState(40);
+  const [modelKeys, setModelKeys] = useState<
+    { id: string; name: string; provider: string }[] | null
+  >(null);
+  const [modelKeyError, setModelKeyError] = useState("");
   const admin = workspace.me.role === "owner",
     bots = workspace.people.filter((p) => p.kind === "bot");
+  async function editCloudBot(id: string) {
+    setBusy(true);
+    try {
+      const { bots: configurations } = await api<{
+        bots: {
+          bot_id: string;
+          credential_id: string | null;
+          model: string;
+          instructions: string;
+          max_steps: number;
+        }[];
+      }>("/chat/cloud-bots");
+      const config = configurations.find((c) => c.bot_id === id),
+        person = bots.find((p) => p.id === id);
+      if (!config || !person) return;
+      setEditingBot(id);
+      setExecution("cloudflare");
+      setBotName(person.name);
+      setHandle(person.handle);
+      setModelKey(config.credential_id || "");
+      setModelName(config.model);
+      setInstructions(config.instructions);
+      setMaxSteps(config.max_steps);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function refreshModelKeys() {
+    setModelKeyError("");
+    try {
+      const result = await api<{
+        connections: { id: string; name: string; provider: string }[];
+      }>("/chat/connections");
+      setModelKeys(
+        result.connections.filter((c) =>
+          ["openai", "anthropic", "deepseek", "kimi", "glm"].includes(
+            c.provider,
+          ),
+        ),
+      );
+    } catch (e) {
+      setModelKeyError((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    if (
+      open &&
+      admin &&
+      section === "integrations" &&
+      execution === "cloudflare"
+    )
+      void refreshModelKeys();
+  }, [open, admin, section, execution]);
   async function refreshTokens() {
     if (admin && section === "integrations") {
       setTokenError("");
@@ -338,17 +405,61 @@ export function TeamSettings({
                   <strong>{p.name}</strong>
                   <span>@{p.handle}</span>
                 </div>
-                <Badge variant="outline">{p.server_id ? "agent" : "bot"}</Badge>
+                <Badge variant="outline">
+                  {p.cloud_agent
+                    ? "Cloudflare · Pi"
+                    : p.server_id
+                      ? "Server"
+                      : "API"}
+                </Badge>
+                {!!p.cloud_agent && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    disabled={busy}
+                    onClick={() => void editCloudBot(p.id)}
+                  >
+                    Configure
+                  </Button>
+                )}
               </div>
             ))}
           </div>
           <form
+            className="bot-settings-form"
             onSubmit={(e) => {
               e.preventDefault();
               void act(async () => {
+                if (editingBot) {
+                  await api("/chat/cloud-bots/" + editingBot, {
+                    method: "PATCH",
+                    body: JSON.stringify({
+                      credentialId: modelKey,
+                      model: modelName,
+                      instructions,
+                      maxSteps,
+                    }),
+                  });
+                  setEditingBot("");
+                  setBotName("");
+                  setHandle("");
+                  toast("Bot updated");
+                  return;
+                }
                 const bot = await post<{ id: string }>("/chat/bots", {
                   name: botName,
                   handle,
+                  execution,
+                  ...(execution === "cloudflare"
+                    ? {
+                        cloud: {
+                          credentialId: modelKey,
+                          model: modelName,
+                          instructions,
+                          maxSteps,
+                        },
+                      }
+                    : {}),
                 });
                 setBotId(bot.id);
                 setBotName("");
@@ -363,6 +474,7 @@ export function TeamSettings({
                   <FieldLabel htmlFor="bot-name">Bot name</FieldLabel>
                   <Input
                     id="bot-name"
+                    disabled={!!editingBot}
                     required
                     value={botName}
                     maxLength={60}
@@ -381,6 +493,7 @@ export function TeamSettings({
                   <FieldLabel htmlFor="bot-handle">Bot username</FieldLabel>
                   <Input
                     id="bot-handle"
+                    disabled={!!editingBot}
                     required
                     pattern="[a-z][a-z0-9_-]{1,39}"
                     value={handle}
@@ -388,9 +501,151 @@ export function TeamSettings({
                   />
                 </Field>
               </div>
-              <Button variant="outline" disabled={busy}>
-                Create bot
+              <Field>
+                <FieldLabel htmlFor="bot-execution">Run on</FieldLabel>
+                <Choice
+                  id="bot-execution"
+                  value={execution}
+                  onChange={(value) => {
+                    if (!editingBot) setExecution(value);
+                  }}
+                  options={[
+                    { value: "api", label: "External bot · API / webhook" },
+                    {
+                      value: "cloudflare",
+                      label: "Cloudflare · built-in Pi (experimental)",
+                    },
+                  ]}
+                />
+                <p className="text-xs text-muted-foreground">
+                  For a server running an agent CLI,{" "}
+                  <Link
+                    className="underline"
+                    href="/settings/workspace/servers"
+                  >
+                    connect a server
+                  </Link>
+                  .
+                </p>
+              </Field>
+              {execution === "cloudflare" && (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Runs without your own server. Includes task planning,
+                    persistent files, lightweight shell and JavaScript tools.
+                    Full Linux builds and npm are not available in this preview.
+                  </p>
+                  {modelKeyError ? (
+                    <p role="alert">
+                      {modelKeyError}{" "}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void refreshModelKeys()}
+                      >
+                        Retry
+                      </Button>
+                    </p>
+                  ) : modelKeys === null ? (
+                    <SettingsSkeleton />
+                  ) : modelKeys.length === 0 ? (
+                    <p>
+                      <Link
+                        className="underline"
+                        href="/settings/workspace/llm"
+                      >
+                        Add an LLM key
+                      </Link>{" "}
+                      to create a cloud agent.
+                    </p>
+                  ) : (
+                    <Field>
+                      <FieldLabel htmlFor="bot-model-key">LLM key</FieldLabel>
+                      <Choice
+                        id="bot-model-key"
+                        value={modelKey}
+                        onChange={setModelKey}
+                        options={modelKeys.map((c) => ({
+                          value: c.id,
+                          label: c.name + " · " + c.provider,
+                        }))}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        This bot uses the selected key in conversations it
+                        joins. Model charges go to that provider account;
+                        Cloudflare usage is billed separately.
+                      </p>
+                    </Field>
+                  )}
+                  <Field>
+                    <FieldLabel htmlFor="bot-model">Model ID</FieldLabel>
+                    <Input
+                      id="bot-model"
+                      disabled={busy}
+                      required
+                      value={modelName}
+                      onChange={(e) => setModelName(e.target.value)}
+                      maxLength={120}
+                      placeholder="Exact model ID from your provider"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="bot-instructions">
+                      Instructions
+                    </FieldLabel>
+                    <Textarea
+                      id="bot-instructions"
+                      disabled={busy}
+                      value={instructions}
+                      onChange={(e) => setInstructions(e.target.value)}
+                      maxLength={12000}
+                      placeholder="What this agent should do and how it should work"
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="bot-max-steps">
+                      Maximum model steps per task
+                    </FieldLabel>
+                    <Input
+                      id="bot-max-steps"
+                      disabled={busy}
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={maxSteps}
+                      onChange={(e) => setMaxSteps(Number(e.target.value))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Tasks stop after this limit or 10 minutes. Send a
+                      follow-up to continue.
+                    </p>
+                  </Field>
+                </>
+              )}
+              <Button
+                variant="outline"
+                disabled={
+                  busy ||
+                  (execution === "cloudflare" &&
+                    (!modelKey || !modelName.trim()))
+                }
+              >
+                {editingBot ? "Save bot" : "Create bot"}
               </Button>
+              {editingBot && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditingBot("");
+                    setBotName("");
+                    setHandle("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              )}
             </FieldGroup>
           </form>
           {bots.length > 0 && (

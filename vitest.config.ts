@@ -10,6 +10,9 @@ export default defineConfig(async () => {
   const key = await webcrypto.subtle.exportKey("jwk", pair.privateKey);
   const publicKey = await webcrypto.subtle.exportKey("raw", pair.publicKey);
   return {
+    resolve: {
+      alias: [{ find: /^just-bash$/, replacement: "just-bash/browser" }],
+    },
     plugins: [
       cloudflareTest({
         wrangler: { configPath: "./tests/wrangler.jsonc" },

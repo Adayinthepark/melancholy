@@ -1,3 +1,4 @@
+import { cloudBotInput, modelCredential } from "./cloud-config";
 import { workspaceInfo } from "./workspace-settings";
 import { queuePush, drainPush } from "./push";
 import { env, waitUntil } from "cloudflare:workers";
@@ -218,18 +219,20 @@ async function agentStatements(
 ): Promise<D1PreparedStatement[]> {
   if (who.kind !== "human") return [];
   const r = await room(m.room_id);
-  let bots = mentioned.filter((p) => p.kind === "bot" && p.server_id);
+  let bots = mentioned.filter(
+    (p) => p.kind === "bot" && (p.server_id || p.cloud_agent),
+  );
   if (r.kind === "dm" && !m.parent_id)
     bots = (
       await env.DB.prepare(
-        `SELECT p.${personColumns.split(",").join(",p.")} FROM room_members rm JOIN people p ON p.id=rm.person_id WHERE rm.room_id=? AND p.kind='bot' AND p.active=1 AND p.server_id IS NOT NULL`,
+        `SELECT p.${personColumns.split(",").join(",p.")} FROM room_members rm JOIN people p ON p.id=rm.person_id WHERE rm.room_id=? AND p.kind='bot' AND p.active=1 AND (p.server_id IS NOT NULL OR p.cloud_agent=1)`,
       )
         .bind(r.id)
         .all<Person>()
     ).results;
   if (m.parent_id) {
     const automatic = await env.DB.prepare(
-      `SELECT p.${personColumns.split(",").join(",p.")} FROM thread_preferences t JOIN people p ON p.id=t.bot_id JOIN room_members rm ON rm.person_id=p.id AND rm.room_id=? WHERE t.root_id=? AND p.active=1 AND p.server_id IS NOT NULL`,
+      `SELECT p.${personColumns.split(",").join(",p.")} FROM thread_preferences t JOIN people p ON p.id=t.bot_id JOIN room_members rm ON rm.person_id=p.id AND rm.room_id=? WHERE t.root_id=? AND p.active=1 AND (p.server_id IS NOT NULL OR p.cloud_agent=1)`,
     )
       .bind(r.id, m.parent_id)
       .first<Person>();
@@ -930,20 +933,89 @@ async function route(request: Request): Promise<Response> {
       .all<StoredChat>();
     return json({ results: await hydrate(rows.results, who) });
   }
+  if (path === "/api/chat/cloud-bots" && method === "GET") {
+    owner(who);
+    return json({
+      bots: (await env.DB.prepare("SELECT * FROM cloud_bots").all()).results,
+    });
+  }
+  const cloudBotId = path.match(/^\/api\/chat\/cloud-bots\/([^/]+)$/)?.[1];
+  if (cloudBotId && method === "PATCH") {
+    owner(who);
+    const input = cloudBotInput.parse(await body(request));
+    await modelCredential(input.credentialId);
+    const exists = await env.DB.prepare(
+      "SELECT 1 FROM cloud_bots c JOIN people p ON p.id=c.bot_id WHERE c.bot_id=? AND p.active=1",
+    )
+      .bind(cloudBotId)
+      .first();
+    if (!exists) throw new ChatError(404, "Cloud bot not found.");
+    const threads = await env.DB.prepare(
+      "SELECT thread_id FROM agent_threads WHERE bot_id=?",
+    )
+      .bind(cloudBotId)
+      .all<{ thread_id: string }>();
+    for (const thread of threads.results) {
+      if (await env.CONVERSATIONS.getByName(thread.thread_id).hasActiveRun())
+        throw new ChatError(
+          409,
+          "Stop this bot's active tasks before changing its model settings.",
+        );
+    }
+    await env.DB.prepare(
+      "UPDATE cloud_bots SET credential_id=?,model=?,instructions=?,max_steps=?,context_window=? WHERE bot_id=?",
+    )
+      .bind(
+        input.credentialId,
+        input.model,
+        input.instructions,
+        input.maxSteps,
+        input.contextWindow,
+        cloudBotId,
+      )
+      .run();
+    return json({ ok: true });
+  }
   if (path === "/api/chat/bots" && method === "POST") {
     owner(who);
     const input = z
       .object({
         name: z.string().trim().min(1).max(60),
         handle: z.string().regex(/^[a-z][a-z0-9_-]{1,39}$/),
+        execution: z.enum(["api", "cloudflare"]).default("api"),
+        cloud: cloudBotInput.optional(),
       })
       .parse(await body(request));
+    if (input.execution === "cloudflare" && !input.cloud)
+      throw new ChatError(400, "Choose a model and LLM credential.");
+    if (input.cloud) await modelCredential(input.cloud.credentialId);
     const id = crypto.randomUUID();
-    await env.DB.prepare(
-      "INSERT INTO people(id,handle,name,kind,created_at) VALUES (?,?,?,'bot',?)",
-    )
-      .bind(id, input.handle, input.name, Date.now())
-      .run();
+    const statements = [
+      env.DB.prepare(
+        "INSERT INTO people(id,handle,name,kind,created_at,cloud_agent) VALUES (?,?,?,'bot',?,?)",
+      ).bind(
+        id,
+        input.handle,
+        input.name,
+        Date.now(),
+        Number(input.execution === "cloudflare"),
+      ),
+    ];
+    if (input.execution === "cloudflare" && input.cloud) {
+      const c = input.cloud;
+      statements.push(
+        env.DB.prepare("INSERT INTO cloud_bots VALUES (?,?,?,?,?,?,?)").bind(
+          id,
+          c.credentialId,
+          c.model,
+          c.instructions,
+          c.maxSteps,
+          c.contextWindow,
+          Date.now(),
+        ),
+      );
+    }
+    await env.DB.batch(statements);
     return json(await person(id), 201);
   }
   if (path === "/api/chat/tokens" && method === "GET") {

@@ -1,0 +1,10 @@
+ALTER TABLE people ADD COLUMN cloud_agent INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE cloud_bots (
+ bot_id TEXT PRIMARY KEY REFERENCES people(id),
+ credential_id TEXT REFERENCES credentials(id) ON DELETE SET NULL,
+ model TEXT NOT NULL,
+ instructions TEXT NOT NULL DEFAULT '',
+ max_steps INTEGER NOT NULL DEFAULT 40,
+ context_window INTEGER NOT NULL DEFAULT 64000,
+ created_at INTEGER NOT NULL
+);

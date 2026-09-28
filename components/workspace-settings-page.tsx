@@ -71,7 +71,7 @@ const details: Record<string, string> = {
   llm: "OpenAI compatible, Anthropic compatible, DeepSeek, Kimi and GLM providers.",
   custom: "Service credentials, signing keys and other private values.",
   servers: "Machines running Codex or Claude Code.",
-  bots: "Bot identities, message API tokens and incoming webhooks.",
+  bots: "Cloud agents, connected agents, message API tokens and webhooks.",
   usage:
     "Reported token usage by server, channel and thread. Input includes cached tokens.",
 };

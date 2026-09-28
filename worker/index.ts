@@ -1,3 +1,4 @@
+export { CloudAgent, WorkspaceServiceProxy } from "./cloud-agent";
 import handler from "vinext/server/fetch-handler";
 import { handleApi } from "./api";
 import { recoverAgentRequests } from "./agent-recovery";

@@ -22,6 +22,16 @@ The web application and storage run on Cloudflare. The connector runs on a
 server with the agent CLI installed and authenticated. Model inference is
 provided by that CLI's provider.
 
+Cloud bots are an alternative branch after Conversation DO: `CloudAgent`
+(Agents SDK) runs Pi's agent core and stores its private transcript and
+Computer filesystem in SQLite. Dynamic Worker shell/JavaScript backends share
+that filesystem. The native runtime projects the same sequenced events into
+Conversation DO, so D1 chat, permissions, cancellation and usage keep their
+existing paths. Model credentials are resolved from the bot's explicit key
+selection; GitHub tools separately enforce conversation integration grants.
+No CLI or Server connector runs inside this branch. See
+[Cloud agents](cloud-agents.md) for current limits and recovery semantics.
+
 ## Identity and authorization
 
 Each installation is one workspace. The bootstrap workspace key signs in the

@@ -60,7 +60,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { api, post } from "@/lib/client";
 import type { Person, TeamMessage } from "@/lib/chat";
-import { formatSize } from "./transcript";
+import { formatSize } from "@/lib/file-size";
 
 export function ChatTimeline({
   messages,

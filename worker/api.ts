@@ -12,9 +12,9 @@ import {
   SESSION_AGE,
   sessionCookie,
 } from "./auth";
-import type { Attachment, Runtime, Server, Thread } from "../lib/protocol";
+import type { Server } from "../lib/protocol";
 import { handleChat, chatFile } from "./team-api";
-import { verifyPassword, requireRoom, ChatError } from "./team-auth";
+import { verifyPassword, ChatError } from "./team-auth";
 
 class HttpError extends Error {
   constructor(
@@ -68,13 +68,6 @@ async function body(request: Request): Promise<unknown> {
     if (e instanceof HttpError) throw e;
     throw new HttpError(400, "Invalid JSON.");
   }
-}
-async function thread(id: string): Promise<Thread> {
-  const record = await env.DB.prepare("SELECT * FROM threads WHERE id=?")
-    .bind(id)
-    .first<Thread>();
-  if (!record) throw new HttpError(404, "Thread not found.");
-  return record;
 }
 type ServerRecord = Omit<Server, "online"> & { token_hash: string };
 async function server(id: string): Promise<ServerRecord> {
@@ -231,41 +224,8 @@ async function route(request: Request): Promise<Response> {
   }
 
   const fileId = path.match(/^\/api\/files\/([a-f0-9-]+)$/)?.[1];
+  if (fileId && method === "GET") return chatFile(request, fileId);
   const session = await authenticate(request);
-  if (fileId && method === "GET") {
-    if (
-      await env.DB.prepare("SELECT id FROM chat_files WHERE id=?")
-        .bind(fileId)
-        .first()
-    )
-      return chatFile(request, fileId);
-    const file = await env.DB.prepare("SELECT * FROM files WHERE id=?")
-      .bind(fileId)
-      .first<Attachment & { thread_id: string }>();
-    if (!file) throw new HttpError(404, "File not found.");
-    if (!session || session.role !== "owner") {
-      const identity = await connectorIdentity(request);
-      if (!identity || (await thread(file.thread_id)).server_id !== identity.id)
-        throw new HttpError(401, "Sign in to download this file.");
-    }
-    const object = await env.FILES.get(file.id);
-    if (!object) throw new HttpError(404, "File not found.");
-    const preview =
-      url.searchParams.get("preview") === "1" &&
-      ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(
-        file.type,
-      );
-    return new Response(object.body, {
-      headers: {
-        "Content-Type": preview ? file.type : "application/octet-stream",
-        "Content-Disposition": `${preview ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
-        "Content-Length": String(object.size),
-        "Cache-Control": "private, no-store",
-        "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": "default-src 'none'; sandbox",
-      },
-    });
-  }
   if (!session) throw new HttpError(401, "Sign in to your workspace.");
   if (
     (!["GET", "HEAD"].includes(method) || request.headers.get("Upgrade")) &&
@@ -285,14 +245,6 @@ async function route(request: Request): Promise<Response> {
         .run();
     // New workspace sockets are scoped to this exact browser session.
     await env.INBOXES.getByName(session.id).closeSession(session.sessionHash!);
-    const rooms = await env.DB.prepare(
-      "SELECT id FROM threads WHERE archived=0 AND NOT EXISTS(SELECT 1 FROM agent_threads a WHERE a.thread_id=threads.id)",
-    ).all<{ id: string }>();
-    await Promise.all(
-      (session.role === "owner" ? rooms.results : []).map((r) =>
-        env.CONVERSATIONS.getByName(r.id).closeSessions(),
-      ),
-    );
     return json({ ok: true }, 200, {
       "Set-Cookie": sessionCookie(request, "", 0),
     });
@@ -310,15 +262,9 @@ async function route(request: Request): Promise<Response> {
   if (session.role !== "owner")
     throw new HttpError(403, "Owner access required.");
   if (path === "/api/workspace" && method === "GET") {
-    const [channels, threads, records] = await Promise.all([
-      env.DB.prepare("SELECT * FROM channels ORDER BY rowid").all(),
-      env.DB.prepare(
-        "SELECT * FROM threads WHERE archived=0 AND NOT EXISTS(SELECT 1 FROM agent_threads a WHERE a.thread_id=threads.id) ORDER BY updated_at DESC LIMIT 200",
-      ).all<Thread>(),
-      env.DB.prepare(
-        "SELECT id,name,runtime,cwd,hostname,created_at FROM servers ORDER BY created_at",
-      ).all<Omit<Server, "online">>(),
-    ]);
+    const records = await env.DB.prepare(
+      "SELECT id,name,runtime,cwd,hostname,created_at FROM servers ORDER BY created_at",
+    ).all<Omit<Server, "online">>();
     const servers = await Promise.all(
       records.results.map(async (s) => ({
         ...s,
@@ -327,35 +273,8 @@ async function route(request: Request): Promise<Response> {
     );
     return json({
       ...(await workspaceInfo()),
-      channels: channels.results,
-      threads: threads.results,
       servers,
     });
-  }
-  if (path === "/api/channels" && method === "POST") {
-    const input = z
-      .object({
-        name: z
-          .string()
-          .trim()
-          .regex(
-            /^[a-z0-9][a-z0-9-]{0,39}$/,
-            "Use lowercase letters, numbers, and hyphens.",
-          ),
-        description: z.string().max(200).default(""),
-      })
-      .parse(await body(request));
-    if (
-      await env.DB.prepare("SELECT id FROM channels WHERE name=?")
-        .bind(input.name)
-        .first()
-    )
-      throw new HttpError(409, "This channel already exists.");
-    const id = crypto.randomUUID();
-    await env.DB.prepare("INSERT INTO channels VALUES (?,?,?)")
-      .bind(id, input.name, input.description)
-      .run();
-    return json({ id, ...input }, 201);
   }
   if (path === "/api/servers" && method === "POST") {
     const input = z
@@ -410,232 +329,6 @@ async function route(request: Request): Promise<Response> {
     await env.DB.prepare("DELETE FROM servers WHERE id=?").bind(serverId).run();
     await env.CONNECTORS.getByName(serverId).revoke();
     return json({ ok: true });
-  }
-  if (path === "/api/threads" && method === "POST") {
-    const input = z
-      .object({
-        channelId: z.string().max(100),
-        serverId: z.string().uuid(),
-        title: z.string().trim().min(1).max(120).default("New thread"),
-      })
-      .parse(await body(request));
-    if (
-      !(await env.DB.prepare("SELECT id FROM channels WHERE id=?")
-        .bind(input.channelId)
-        .first())
-    )
-      throw new HttpError(404, "Channel not found.");
-    await server(input.serverId);
-    const id = crypto.randomUUID();
-    const now = Date.now();
-    await env.DB.prepare("INSERT INTO threads VALUES (?,?,?,?,?,?,0)")
-      .bind(id, input.channelId, input.title, input.serverId, now, now)
-      .run();
-    return json(await thread(id), 201);
-  }
-  const match = path.match(
-    /^\/api\/threads\/([a-f0-9-]+)(?:\/(messages|socket|stop|export))?$/,
-  );
-  if (match) {
-    const record = await thread(match[1]);
-    const linked = await env.DB.prepare(
-      "SELECT room_id FROM agent_threads WHERE thread_id=?",
-    )
-      .bind(record.id)
-      .first<{ room_id: string }>();
-    if (linked) {
-      try {
-        await requireRoom(linked.room_id, session);
-      } catch {
-        throw new HttpError(404, "Thread not found.");
-      }
-    }
-    const room = env.CONVERSATIONS.getByName(record.id);
-    const action = match[2];
-    if (!action && method === "GET") return json(record);
-    if (!action && method === "PATCH") {
-      const input = z
-        .object({
-          title: z.string().trim().min(1).max(120).optional(),
-          archived: z.boolean().optional(),
-        })
-        .parse(await body(request));
-      if (input.archived) await room.cancel();
-      await env.DB.prepare("UPDATE threads SET title=?,archived=? WHERE id=?")
-        .bind(
-          input.title ?? record.title,
-          input.archived === undefined
-            ? record.archived
-            : Number(input.archived),
-          record.id,
-        )
-        .run();
-      return json(await thread(record.id));
-    }
-    if (action === "socket" && method === "GET") {
-      const headers = new Headers(request.headers);
-      headers.set("x-session-expires", String(session.expires));
-      return room.fetch(new Request(request, { headers }));
-    }
-    if (action === "messages" && method === "GET") {
-      const before = url.searchParams.get("before");
-      return json(
-        await room.snapshot(
-          before ? z.coerce.number().int().positive().parse(before) : undefined,
-        ),
-      );
-    }
-    if (action === "messages" && method === "POST") {
-      if (record.archived) throw new HttpError(409, "This thread is archived.");
-      if (!record.server_id)
-        throw new HttpError(
-          409,
-          "This thread's server was removed. Start a new thread.",
-        );
-      const input = z
-        .object({
-          id: z.string().uuid(),
-          text: z.string().trim().min(1).max(32000),
-          attachments: z.array(z.string().uuid()).max(8).default([]),
-        })
-        .parse(await body(request));
-      const target = await server(record.server_id);
-      const attachments: Attachment[] = [];
-      for (const id of input.attachments) {
-        const file = await env.DB.prepare(
-          "SELECT id,name,size,type FROM files WHERE id=? AND thread_id=?",
-        )
-          .bind(id, record.id)
-          .first<Attachment>();
-        if (!file)
-          throw new HttpError(400, "Attachment not found in this thread.");
-        attachments.push(file);
-      }
-      let result;
-      try {
-        result = await room.send({
-          threadId: record.id,
-          serverId: target.id,
-          runtime: target.runtime as Runtime,
-          text: input.text,
-          id: input.id,
-          attachments,
-        });
-      } catch (e) {
-        if (e instanceof Error && e.message.includes("already running"))
-          throw new HttpError(
-            409,
-            "A turn is already running. Stop it before sending another.",
-          );
-        throw e;
-      }
-      if (result.error) throw new HttpError(409, result.error);
-      if (record.title === "New thread")
-        await env.DB.prepare(
-          "UPDATE threads SET title=?,updated_at=? WHERE id=?",
-        )
-          .bind(input.text.slice(0, 80), Date.now(), record.id)
-          .run();
-      return json(result, 202);
-    }
-    if (action === "stop" && method === "POST") {
-      await room.cancel();
-      return json({ ok: true });
-    }
-    if (action === "export" && method === "GET") {
-      let before: number | undefined;
-      let initial = true;
-      let finished = false;
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream<Uint8Array>({
-        async pull(controller) {
-          if (finished) {
-            controller.close();
-            return;
-          }
-          const page = await room.snapshot(before);
-          const prefix = initial
-            ? `{"thread":${JSON.stringify(record)},"messages":[`
-            : page.messages.length
-              ? ","
-              : "";
-          controller.enqueue(
-            encoder.encode(
-              prefix +
-                page.messages
-                  .slice()
-                  .reverse()
-                  .map((m) => JSON.stringify(m))
-                  .join(","),
-            ),
-          );
-          initial = false;
-          if (!page.hasMore) {
-            controller.enqueue(encoder.encode("]}"));
-            finished = true;
-            controller.close();
-          } else before = page.messages[0].created_at;
-        },
-      });
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-store",
-          "Content-Disposition": `attachment; filename="melancholy-${record.id}.json"`,
-        },
-      });
-    }
-  }
-  if (path === "/api/files" && method === "POST") {
-    const threadId = z.string().uuid().parse(url.searchParams.get("thread"));
-    await thread(threadId);
-    const bytes = await limitedBody(request, 11 * 1024 * 1024);
-    const form = await new Response(bytes, {
-      headers: { "Content-Type": request.headers.get("Content-Type") ?? "" },
-    }).formData();
-    const file = form.get("file");
-    if (!file || typeof file === "string")
-      throw new HttpError(400, "Choose a file.");
-    if (file.size > 10 * 1024 * 1024)
-      throw new HttpError(413, "Files must be 10 MB or smaller.");
-    const id = crypto.randomUUID();
-    const name = file.name.slice(0, 200) || "attachment";
-    await env.FILES.put(id, file.stream(), {
-      httpMetadata: { contentType: file.type || "application/octet-stream" },
-    });
-    await env.DB.prepare("INSERT INTO files VALUES (?,?,?,?,?,?)")
-      .bind(
-        id,
-        name,
-        file.size,
-        file.type || "application/octet-stream",
-        threadId,
-        Date.now(),
-      )
-      .run();
-    return json({ id, name, size: file.size, type: file.type }, 201);
-  }
-  if (path === "/api/search" && method === "GET") {
-    const q = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
-    if (!q) return json({ results: [] });
-    const results =
-      q.length >= 3
-        ? await env.DB.prepare(
-            "SELECT s.thread_id,s.message_id,s.text,t.title,t.channel_id FROM search s JOIN threads t ON t.id=s.thread_id WHERE search MATCH ? AND t.archived=0 AND NOT EXISTS(SELECT 1 FROM agent_threads a WHERE a.thread_id=t.id) LIMIT 30",
-          )
-            .bind('"' + q.replaceAll('"', '""') + '"')
-            .all()
-        : await env.DB.prepare(
-            "SELECT s.thread_id,s.message_id,s.text,t.title,t.channel_id FROM search_messages s JOIN threads t ON t.id=s.thread_id WHERE instr(lower(s.text),lower(?))>0 AND t.archived=0 AND NOT EXISTS(SELECT 1 FROM agent_threads a WHERE a.thread_id=t.id) LIMIT 30",
-          )
-            .bind(q)
-            .all();
-    return json({
-      results: results.results.map((r) => ({
-        ...r,
-        text: String(r.text).slice(0, 500),
-      })),
-    });
   }
   throw new HttpError(404, "Not found.");
 }

@@ -8,7 +8,6 @@ import type {
   Job,
   Run,
   Runtime,
-  Snapshot,
   TokenUsage,
 } from "../lib/protocol";
 
@@ -24,14 +23,12 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
       CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, server_id TEXT NOT NULL, runtime TEXT NOT NULL, status TEXT NOT NULL, session_id TEXT, error TEXT, created_at INTEGER NOT NULL, job TEXT NOT NULL, dispatched INTEGER NOT NULL DEFAULT 0, event_seq INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS activity (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, detail TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS dirty (message_id TEXT PRIMARY KEY);
+      DROP TABLE IF EXISTS dirty;
       CREATE TABLE IF NOT EXISTS chat_dirty (run_id TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS usage (run_id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS usage_dirty (run_id TEXT PRIMARY KEY);
     `);
-    ctx.setWebSocketAutoResponse(
-      new WebSocketRequestResponsePair("ping", "pong"),
-    );
+    for (const ws of ctx.getWebSockets()) ws.close(1001, "Endpoint removed");
   }
 
   private getMeta(key: string): string | null {
@@ -48,76 +45,6 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
       value,
     );
   }
-  async fetch(request: Request): Promise<Response> {
-    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket")
-      return new Response("Upgrade required", { status: 426 });
-    const pair = new WebSocketPair();
-    const expires = Number(request.headers.get("x-session-expires"));
-    if (!Number.isFinite(expires) || expires <= Date.now())
-      return new Response("Unauthorized", { status: 401 });
-    this.ctx.acceptWebSocket(pair[1]);
-    pair[1].serializeAttachment({ expires });
-    pair[1].send(JSON.stringify({ type: "snapshot", ...this.snapshot() }));
-    return new Response(null, { status: 101, webSocket: pair[0] });
-  }
-  webSocketMessage(ws: WebSocket) {
-    ws.close(1008, "Read-only connection");
-  }
-  webSocketClose(ws: WebSocket, code: number) {
-    ws.close(code);
-  }
-
-  snapshot(before?: number): Snapshot {
-    const rows = this.ctx.storage.sql
-      .exec<StoredMessage>(
-        "SELECT * FROM messages WHERE created_at<? ORDER BY created_at DESC,id DESC LIMIT 101",
-        before ?? Number.MAX_SAFE_INTEGER,
-      )
-      .toArray();
-    const selected = rows.slice(0, 100).reverse();
-    const runIds = selected
-      .map((m) => m.run_id)
-      .filter((v): v is string => !!v);
-    // Each page is small, while old tool logs remain in the room's database.
-    const runs = this.ctx.storage.sql
-      .exec<StoredRun>("SELECT * FROM runs ORDER BY created_at DESC LIMIT 100")
-      .toArray()
-      .filter((r) => runIds.includes(r.id));
-    const activity = this.ctx.storage.sql
-      .exec<Activity>(
-        "SELECT * FROM activity ORDER BY created_at DESC LIMIT 300",
-      )
-      .toArray()
-      .filter((a) => runIds.includes(a.run_id))
-      .reverse();
-    return {
-      messages: selected.map((m) => ({
-        ...m,
-        attachments: JSON.parse(m.attachments),
-      })),
-      runs: runs.map(({ job: _job, dispatched: _d, event_seq: _s, ...r }) => r),
-      activity,
-      hasMore: rows.length > 100,
-    };
-  }
-  private broadcast() {
-    const data = JSON.stringify({ type: "snapshot", ...this.snapshot() });
-    for (const ws of this.ctx.getWebSockets()) {
-      const attachment = ws.deserializeAttachment() as {
-        expires: number;
-      } | null;
-      if (!attachment || attachment.expires <= Date.now()) {
-        ws.close(1008, "Session expired");
-        continue;
-      }
-      try {
-        ws.send(data);
-      } catch {
-        ws.close(1011, "Reconnect");
-      }
-    }
-  }
-
   canExecute(runId: string, serverId: string) {
     return !!this.ctx.storage.sql
       .exec(
@@ -135,8 +62,21 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
     id: string;
     attachments: Attachment[];
     context?: string;
-    chat?: { roomId: string; botId: string; parentId: string | null };
+    chat: { roomId: string; botId: string; parentId: string | null };
   }): Promise<{ id: string; duplicate: boolean; error?: string }> {
+    if (
+      !input.chat ||
+      !(await this.env.DB.prepare(
+        "SELECT 1 FROM agent_threads WHERE thread_id=? AND room_id=? AND bot_id=?",
+      )
+        .bind(input.threadId, input.chat.roomId, input.chat.botId)
+        .first())
+    )
+      return {
+        id: "",
+        duplicate: false,
+        error: "Agent conversation not found.",
+      };
     const existing = this.ctx.storage.sql
       .exec<{ run_id: string }>(
         "SELECT run_id FROM messages WHERE id=?",
@@ -216,13 +156,8 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
         now,
         JSON.stringify(job),
       );
-      this.ctx.storage.sql.exec(
-        "INSERT OR IGNORE INTO dirty VALUES (?)",
-        input.id,
-      );
     });
     await this.ctx.storage.setAlarm(Date.now() + 1000);
-    this.broadcast();
     if (input.chat) {
       try {
         await this.syncChat(runId);
@@ -316,18 +251,12 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
           "UPDATE runs SET status='cancelled' WHERE id=?",
           runId,
         );
-      if (terminal.has(event.type))
-        this.ctx.storage.sql.exec(
-          "INSERT OR IGNORE INTO dirty SELECT id FROM messages WHERE run_id=?",
-          runId,
-        );
       if (this.getMeta("chat"))
         this.ctx.storage.sql.exec(
           "INSERT OR IGNORE INTO chat_dirty VALUES (?)",
           runId,
         );
     });
-    this.broadcast();
     if (
       terminal.has(event.type) ||
       event.type === "usage" ||
@@ -457,9 +386,6 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
     );
     await this.receive(run.id, run.event_seq + 1, { type: "cancelled" });
   }
-  closeSessions() {
-    for (const ws of this.ctx.getWebSockets()) ws.close(1008, "Signed out");
-  }
   async alarm() {
     try {
       await this.dispatch();
@@ -471,28 +397,6 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
         .exec<{ run_id: string }>("SELECT run_id FROM chat_dirty")
         .toArray())
         await this.syncChat(row.run_id);
-      const threadId = this.getMeta("threadId");
-      if (threadId) {
-        const dirty = this.ctx.storage.sql
-          .exec<{ message_id: string; text: string }>(
-            "SELECT dirty.message_id,messages.text FROM dirty JOIN messages ON messages.id=dirty.message_id",
-          )
-          .toArray();
-        for (const m of dirty) {
-          await this.env.DB.prepare(
-            "INSERT INTO search_messages VALUES (?,?,?) ON CONFLICT(message_id) DO UPDATE SET text=excluded.text",
-          )
-            .bind(m.message_id, threadId, m.text)
-            .run();
-          this.ctx.storage.sql.exec(
-            "DELETE FROM dirty WHERE message_id=?",
-            m.message_id,
-          );
-        }
-        await this.env.DB.prepare("UPDATE threads SET updated_at=? WHERE id=?")
-          .bind(Date.now(), threadId)
-          .run();
-      }
     } catch {
       await this.ctx.storage.setAlarm(Date.now() + 10000);
     }

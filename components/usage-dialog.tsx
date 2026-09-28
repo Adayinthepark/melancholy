@@ -142,7 +142,7 @@ export function UsageDialog({
                         <small>{r.model || r.runtime}</small>
                       </td>
                       <td>
-                        {r.room_name || "Earlier conversation"}
+                        {r.room_name || "Removed conversation"}
                         {r.root_id && r.root_id !== r.room_id && (
                           <a href={"/thread/" + r.root_id}>Open thread</a>
                         )}

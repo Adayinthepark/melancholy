@@ -1,3 +1,4 @@
+import { inspectAgent } from "./inspect-agent";
 import { beforeAll, describe, it, expect } from "vitest";
 import { env } from "cloudflare:workers";
 import {
@@ -35,11 +36,16 @@ async function createRoom() {
   )
     .bind(serverId, crypto.randomUUID(), Date.now())
     .run();
-  await env.DB.prepare(
-    "INSERT INTO threads VALUES (?,'general','Test',?,?,?,0)",
-  )
-    .bind(threadId, serverId, Date.now(), Date.now())
-    .run();
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO people(id,handle,name,kind,server_id,created_at) VALUES (?,?,'test','bot',?,?)",
+    ).bind(serverId, serverId, serverId, Date.now()),
+    env.DB.prepare("INSERT INTO agent_threads VALUES (?,'general',?,?)").bind(
+      threadId,
+      threadId,
+      serverId,
+    ),
+  ]);
   return {
     room: env.CONVERSATIONS.getByName(threadId),
     input: {
@@ -49,6 +55,7 @@ async function createRoom() {
       text: "hello searchable世界",
       id: crypto.randomUUID(),
       attachments: [],
+      chat: { roomId: "general", botId: serverId, parentId: null },
     },
   };
 }
@@ -109,6 +116,30 @@ describe("workspace access", () => {
     expect(text).not.toContain(token);
     expect(text).not.toContain("token_hash");
   });
+  it("removes standalone endpoints and metadata", async () => {
+    const cookie = await login();
+    for (const [path, method] of [
+      ["/api/channels", "POST"],
+      ["/api/threads", "POST"],
+      ["/api/files", "POST"],
+      ["/api/search?q=hello", "GET"],
+      ["/api/threads/00000000-0000-4000-8000-000000000000/messages", "GET"],
+    ]) {
+      const response = await handleApi(
+        new Request(base + path, {
+          method,
+          headers: { Cookie: cookie, Origin: base },
+        }),
+      );
+      expect(response.status).toBe(404);
+    }
+    const response = await handleApi(
+      new Request(base + "/api/workspace", { headers: { Cookie: cookie } }),
+    );
+    const metadata = await response.json();
+    expect(metadata).not.toHaveProperty("channels");
+    expect(metadata).not.toHaveProperty("threads");
+  });
   it("redeems a sign-in ticket once and rejects expired tickets", async () => {
     const cookie = await login();
     const create = () =>
@@ -157,7 +188,7 @@ describe("workspace access", () => {
       new File(["private attachment"], "notes.txt", { type: "text/plain" }),
     );
     const uploaded = await handleApi(
-      new Request(base + "/api/files?thread=" + input.threadId, {
+      new Request(base + "/api/chat/files?room=general", {
         method: "POST",
         headers: { Cookie: cookie, Origin: base },
         body: form,
@@ -165,6 +196,26 @@ describe("workspace access", () => {
     );
     expect(uploaded.status).toBe(201);
     const { id } = (await uploaded.json()) as { id: string };
+    const messageId = crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO chat_messages(id,room_id,author_id,text,created_at,attachments) VALUES (?,'general','owner','attachment',?,?)",
+      ).bind(
+        messageId,
+        Date.now(),
+        JSON.stringify([
+          { id, name: "notes.txt", size: 18, type: "text/plain" },
+        ]),
+      ),
+      env.DB.prepare("UPDATE chat_files SET message_id=? WHERE id=?").bind(
+        messageId,
+        id,
+      ),
+      env.DB.prepare("INSERT INTO room_members VALUES ('general',?,?)").bind(
+        input.serverId,
+        Date.now(),
+      ),
+    ]);
     const file = base + "/api/files/" + id;
     expect((await handleApi(new Request(file))).status).toBe(401);
     expect(
@@ -192,7 +243,7 @@ describe("workspace access", () => {
           }),
         )
       ).status,
-    ).toBe(401);
+    ).toBe(404);
   });
 });
 describe("durable conversation", () => {
@@ -200,9 +251,9 @@ describe("durable conversation", () => {
     const { room, input } = await createRoom();
     await room.send(input);
     await evictDurableObject(room);
-    expect((await room.snapshot()).messages[0].text).toBe(input.text);
+    expect((await inspectAgent(room)).messages[0].text).toBe(input.text);
     expect(
-      (await env.CONVERSATIONS.getByName(crypto.randomUUID()).snapshot())
+      (await inspectAgent(env.CONVERSATIONS.getByName(crypto.randomUUID())))
         .messages,
     ).toEqual([]);
   });
@@ -211,7 +262,7 @@ describe("durable conversation", () => {
     const first = await room.send(input);
     const again = await room.send(input);
     expect(again).toEqual({ id: first.id, duplicate: true });
-    expect((await room.snapshot()).messages).toHaveLength(2);
+    expect((await inspectAgent(room)).messages).toHaveLength(2);
     expect(
       (await room.send({ ...input, id: crypto.randomUUID() })).error,
     ).toContain("already running");
@@ -224,30 +275,45 @@ describe("durable conversation", () => {
     await room.receive(id, 2, { type: "text", text: "duplicate" });
     await room.receive(id, 3, { type: "completed" });
     await room.receive(id, 4, { type: "text", text: "late" });
-    const snapshot = await room.snapshot();
+    const snapshot = await inspectAgent(room);
     expect(snapshot.messages[1].text).toBe("correct");
     expect(snapshot.runs[0].session_id).toBe("session-123");
     await room.send({ ...input, id: crypto.randomUUID(), text: "follow-up" });
-    expect((await room.snapshot()).runs).toHaveLength(2);
+    const resumed = await inspectAgent(room);
+    expect(resumed.runs).toHaveLength(2);
+    expect(JSON.parse(resumed.runs[0].job).sessionId).toBe("session-123");
   });
   it("cancels an offline queued task and leaves the room usable", async () => {
     const { room, input } = await createRoom();
     await room.send(input);
     await room.cancel();
-    expect((await room.snapshot()).runs[0].status).toBe("cancelled");
+    expect((await inspectAgent(room)).runs[0].status).toBe("cancelled");
     await room.send({ ...input, id: crypto.randomUUID() });
-    expect((await room.snapshot()).runs).toHaveLength(2);
+    expect((await inspectAgent(room)).runs).toHaveLength(2);
   });
-  it("indexes persisted messages for substring search", async () => {
+  it("projects agent output into current chat search", async () => {
     const { room, input } = await createRoom();
-    await room.send(input);
+    const run = await room.send(input);
+    await room.receive(run.id, 1, {
+      type: "text",
+      text: "searchable agent output",
+    });
     await runDurableObjectAlarm(room);
     const result = await env.DB.prepare(
-      "SELECT text FROM search WHERE search MATCH ?",
+      "SELECT text FROM chat_search WHERE chat_search MATCH ?",
     )
       .bind('"searchable"')
       .all();
-    expect(result.results.some((r) => r.text === input.text)).toBe(true);
+    expect(
+      result.results.some((r) => r.text === "searchable agent output"),
+    ).toBe(true);
+  });
+  it("rejects standalone tasks without a current channel mapping", async () => {
+    const { room, input } = await createRoom();
+    expect(
+      (await room.send({ ...input, threadId: crypto.randomUUID() })).error,
+    ).toBe("Agent conversation not found.");
+    expect((await inspectAgent(room)).runs).toHaveLength(0);
   });
   it("persists connector revocation and rejects a previously authorized upgrade", async () => {
     const { room, input } = await createRoom();
@@ -255,7 +321,7 @@ describe("durable conversation", () => {
     await runDurableObjectAlarm(room);
     const connector = env.CONNECTORS.getByName(input.serverId);
     await connector.revoke();
-    expect((await room.snapshot()).runs[0].status).toBe("failed");
+    expect((await inspectAgent(room)).runs[0].status).toBe("failed");
     await evictDurableObject(connector);
     const staleUpgrade = await connector.fetch(
       new Request(base + "/api/connector", {
@@ -267,7 +333,7 @@ describe("durable conversation", () => {
     await room.send({ ...input, id: crypto.randomUUID() });
     await runDurableObjectAlarm(room);
     expect(
-      (await room.snapshot()).runs.every((run) => run.status === "failed"),
+      (await inspectAgent(room)).runs.every((run) => run.status === "failed"),
     ).toBe(true);
   });
 });

@@ -104,9 +104,12 @@ removed first. Other inherited environment variables and filesystem credentials 
 uses the operator's existing CLI policy; it never activates automatically after
 a sandbox failure. The web UI cannot approve interactive tool escalations.
 
-Earlier single-owner agent conversations remain available at `/legacy`. The
-legacy listing/search excludes new shared-workspace agent sessions. Direct
-access to a shared session still checks its conversation membership.
+`agent_threads` is the sole registry for connected agent sessions. The retired
+single-owner workspace, its HTTP/WebSocket endpoints, duplicate search index,
+and channel/thread/file directory have been removed. Upgrading an existing
+installation also requires deleting standalone Conversation objects, connector
+job copies and their R2 attachments before applying migration 0007. Current
+`agent_threads` IDs and their durable CLI sessions must be retained.
 
 ## Files and operations
 

@@ -1,3 +1,4 @@
+import { inspectAgent } from "./inspect-agent";
 import { beforeAll, afterEach, describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:workers";
 import {
@@ -140,10 +141,10 @@ async function running(
   await expect
     .poll(async () => {
       await env.CHAT_DISPATCHERS.getByName(roomId).kick(roomId);
-      return (await agent.snapshot()).runs.length;
+      return (await inspectAgent(agent)).runs.length;
     })
     .toBe(1);
-  const run = (await agent.snapshot()).runs[0];
+  const run = (await inspectAgent(agent)).runs[0];
   return { agent, run, m, threadId: mapping!.thread_id };
 }
 function providerMock() {

@@ -1,3 +1,4 @@
+import { inspectAgent } from "./inspect-agent";
 import { beforeAll, describe, it, expect } from "vitest";
 import { env } from "cloudflare:workers";
 import {
@@ -480,7 +481,7 @@ describe("bots and connected agents", () => {
       .first<{ thread_id: string }>();
     expect(mapping).not.toBeNull();
     const agent = env.CONVERSATIONS.getByName(mapping!.thread_id),
-      run = (await agent.snapshot()).runs[0];
+      run = (await inspectAgent(agent)).runs[0];
     await agent.receive(run.id, 1, {
       type: "started",
       sessionId: "same-session",
@@ -522,11 +523,11 @@ describe("bots and connected agents", () => {
     ]);
     await recoverAgentRequests(env);
     expect(
-      (await agent.snapshot()).messages.some((m) => m.id === recoveredId),
+      (await inspectAgent(agent)).messages.some((m) => m.id === recoveredId),
     ).toBe(true);
     await recoverAgentRequests(env);
     expect(
-      (await agent.snapshot()).messages.filter((m) => m.id === recoveredId),
+      (await inspectAgent(agent)).messages.filter((m) => m.id === recoveredId),
     ).toHaveLength(1);
     await agent.cancel();
   });

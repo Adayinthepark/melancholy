@@ -1,7 +1,6 @@
 export type Runtime = "codex" | "claude";
 export type RunStatus =
   "queued" | "running" | "completed" | "failed" | "cancelled";
-export type Channel = { id: string; name: string; description: string };
 export type Server = {
   id: string;
   name: string;
@@ -10,15 +9,6 @@ export type Server = {
   cwd: string | null;
   hostname: string | null;
   created_at: number;
-};
-export type Thread = {
-  id: string;
-  channel_id: string;
-  title: string;
-  server_id: string | null;
-  created_at: number;
-  updated_at: number;
-  archived: number;
 };
 export type Attachment = {
   id: string;
@@ -53,12 +43,6 @@ export type Run = {
   error: string | null;
   created_at: number;
 };
-export type Snapshot = {
-  messages: ChatMessage[];
-  runs: Run[];
-  activity: Activity[];
-  hasMore: boolean;
-};
 export type Job = {
   id: string;
   threadId: string;
@@ -89,9 +73,3 @@ export type AgentEvent =
   | { type: "completed"; sessionId?: string }
   | { type: "failed"; error: string }
   | { type: "cancelled" };
-export type Workspace = {
-  name: string;
-  channels: Channel[];
-  threads: Thread[];
-  servers: Server[];
-};

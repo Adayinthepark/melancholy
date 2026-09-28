@@ -104,8 +104,8 @@ installation. Forks must replace its account, domain and resource identifiers.
 6. Run `npm run deploy`.
 
 Generate a key with `openssl rand -hex 32`. Never commit it or connector config.
-Existing installations retain their owner sessions and earlier agent history;
-that history is available to the owner at `/legacy`.
+Owner sign-ins and channel agent sessions persist across upgrades.
+The retired single-owner workspace and its standalone history have been removed.
 
 Workers Paid starts at $5/month. Actual charges depend on database writes,
 active Durable Object time, storage and request volume. Model inference is

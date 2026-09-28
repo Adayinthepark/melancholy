@@ -9,6 +9,7 @@
     "WORKSPACE_KEY": "test-workspace-key-that-is-long-enough-for-tests",
   },
   "d1_databases": [
+    { "binding": "MIGRATION_DB", "database_name": "migration-test", "database_id": "11111111-1111-1111-1111-111111111111" },
     {
       "binding": "DB",
       "database_name": "test",

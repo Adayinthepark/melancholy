@@ -92,18 +92,11 @@ export async function jobEnvironment(
   )
     .bind(threadId, serverId)
     .first<{ room_id: string; bot_id: string }>();
-  if (!mapping) {
-    if (
-      await env.DB.prepare("SELECT 1 FROM agent_threads WHERE thread_id=?")
-        .bind(threadId)
-        .first()
-    )
-      throw new ChatError(
-        403,
-        "This agent no longer has access to the conversation.",
-      );
-    return {};
-  }
+  if (!mapping)
+    throw new ChatError(
+      403,
+      "This agent no longer has access to the conversation.",
+    );
   const rows = await env.DB.prepare(
     "SELECT i.* FROM integrations i JOIN room_integrations r ON r.integration_id=i.id WHERE r.room_id=? AND r.agent_enabled=1",
   )

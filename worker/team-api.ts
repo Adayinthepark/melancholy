@@ -242,19 +242,6 @@ async function agentStatements(
     const threadId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
     statements.push(
       env.DB.prepare(
-        "INSERT OR IGNORE INTO channels(id,name,description) VALUES (?,?,?)",
-      ).bind(r.id, "conversation-" + r.id, ""),
-      env.DB.prepare(
-        "INSERT OR IGNORE INTO threads(id,channel_id,title,server_id,created_at,updated_at) VALUES (?,?,?,?,?,?)",
-      ).bind(
-        threadId,
-        r.id,
-        m.text.slice(0, 80) || "Conversation",
-        bot.server_id,
-        Date.now(),
-        Date.now(),
-      ),
-      env.DB.prepare(
         "INSERT OR IGNORE INTO agent_threads(thread_id,room_id,root_id,bot_id) VALUES (?,?,?,?)",
       ).bind(threadId, r.id, rootId, bot.id),
       env.DB.prepare(

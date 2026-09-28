@@ -547,9 +547,6 @@ export function TeamSettings({
           >
             Bot API documentation
           </a>
-          <a className="text-xs text-muted-foreground" href="/legacy">
-            Earlier agent conversations
-          </a>
         </div>
       )}
     </>

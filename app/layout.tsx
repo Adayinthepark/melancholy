@@ -27,7 +27,7 @@ export default function RootLayout({
         <meta name="theme-color" content="#f4f4f4" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem('melancholy-theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');document.querySelector('meta[name="theme-color"]').content='#171717'}}catch{}`,
+            __html: `try{var t=localStorage.getItem('melancholy-theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch{}`,
           }}
         />
       </head>

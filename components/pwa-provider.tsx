@@ -19,6 +19,8 @@ export function PwaProvider({ children }: { children: ReactNode }) {
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [standalone, setStandalone] = useState(false);
   useEffect(() => {
+    // Update hoisted metadata after hydration; changing it in the head script
+    // makes React create a second tag because the server attributes differ.
     const root = document.documentElement;
     const updateColor = () => {
       const meta = document.querySelector<HTMLMetaElement>(

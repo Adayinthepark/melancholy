@@ -5,7 +5,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SettingsSkeleton } from "./loading-states";
 import { Skeleton } from "./ui/skeleton";
-import { ArrowLeft, Sun, Moon } from "lucide-react";
+import {
+  ArrowLeft,
+  Sun,
+  Moon,
+  SlidersHorizontal,
+  Users,
+  Cloud,
+  GitBranch,
+  KeyRound,
+  LockKeyhole,
+  Server as ServerIcon,
+  Bot,
+  ChartNoAxesColumn,
+  UserRound,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Mark } from "./brand";
 import { Login } from "./login";
@@ -24,27 +38,30 @@ const groups = [
   {
     label: "Workspace",
     items: [
-      { id: "general", label: "General" },
-      { id: "members", label: "Members" },
+      { id: "general", label: "General", icon: SlidersHorizontal },
+      { id: "members", label: "Members", icon: Users },
     ],
   },
   {
     label: "Integrations & credentials",
     items: [
-      { id: "cloudflare", label: "Cloudflare" },
-      { id: "github", label: "GitHub" },
-      { id: "llm", label: "LLM keys" },
-      { id: "custom", label: "Custom credentials" },
+      { id: "cloudflare", label: "Cloudflare", icon: Cloud },
+      { id: "github", label: "GitHub", icon: GitBranch },
+      { id: "llm", label: "LLM keys", icon: KeyRound },
+      { id: "custom", label: "Custom credentials", icon: LockKeyhole },
     ],
   },
   {
     label: "Bot & Agent",
     items: [
-      { id: "servers", label: "Servers" },
-      { id: "bots", label: "Bots" },
+      { id: "servers", label: "Servers", icon: ServerIcon },
+      { id: "bots", label: "Bots", icon: Bot },
     ],
   },
-  { label: "", items: [{ id: "usage", label: "Usage" }] },
+  {
+    label: "",
+    items: [{ id: "usage", label: "Usage", icon: ChartNoAxesColumn }],
+  },
 ];
 const details: Record<string, string> = {
   general: "Workspace name and description.",
@@ -132,6 +149,7 @@ export function WorkspaceSettingsPage() {
                   }
                   aria-current={section === item.id ? "page" : undefined}
                 >
+                  <item.icon aria-hidden="true" />
                   {item.label}
                 </Link>
               ))}
@@ -144,6 +162,7 @@ export function WorkspaceSettingsPage() {
           disabled={!workspace}
           onClick={() => setProfile(true)}
         >
+          <UserRound data-icon="inline-start" />
           Profile settings
         </Button>
       </aside>

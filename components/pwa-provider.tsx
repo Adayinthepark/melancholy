@@ -19,6 +19,22 @@ export function PwaProvider({ children }: { children: ReactNode }) {
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [standalone, setStandalone] = useState(false);
   useEffect(() => {
+    const root = document.documentElement;
+    const updateColor = () => {
+      const meta = document.querySelector<HTMLMetaElement>(
+        'meta[name="theme-color"]',
+      );
+      if (meta)
+        meta.content = getComputedStyle(root)
+          .getPropertyValue("--canvas")
+          .trim();
+    };
+    updateColor();
+    const observer = new MutationObserver(updateColor);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
     const query = matchMedia("(display-mode: standalone)");
     const update = () =>
       setStandalone(

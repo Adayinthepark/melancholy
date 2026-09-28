@@ -581,8 +581,7 @@ export function TeamWorkspaceApp({
       </a>
       <Button
         className="team-new-message"
-        variant="outline"
-        size="sm"
+        variant="ghost"
         onClick={() => startCreate("message")}
       >
         <SquarePen />
@@ -610,6 +609,7 @@ export function TeamWorkspaceApp({
                 (r.unread ? " unread" : "")
               }
               key={r.id}
+              aria-current={r.id === roomId ? "page" : undefined}
               onClick={() => choose(r.id)}
             >
               {r.private ? <Lock /> : <Hash />}
@@ -646,6 +646,7 @@ export function TeamWorkspaceApp({
           .map((r) => (
             <button
               key={r.id}
+              aria-current={r.id === roomId ? "page" : undefined}
               className={
                 "team-room-link" +
                 (r.id === roomId ? " selected" : "") +

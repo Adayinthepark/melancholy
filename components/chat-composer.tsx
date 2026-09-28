@@ -206,7 +206,8 @@ export function ChatComposer({
           </InputGroupButton>
           <span className="composer-hint">Markdown supported</span>
           <InputGroupButton
-            className="ml-auto"
+            className="composer-send ml-auto"
+            variant="default"
             size="icon-sm"
             aria-label={parentId ? "Send reply" : "Send message"}
             disabled={uploading || (!text.trim() && !files.length)}

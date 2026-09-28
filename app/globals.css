@@ -1291,7 +1291,7 @@
     border: 0;
   }
   .has-thread .team-channel {
-    display: none;
+    visibility: hidden;
   }
   .chat-row {
     padding: 10px 14px;
@@ -1931,4 +1931,131 @@
 .workspace-settings-content .settings-member-list {
   max-height: none;
   overflow: visible;
+}
+
+/* Motion responds to navigation while message and composer DOM stay mounted. */
+.team-conversation-layout {
+  position: relative;
+  overflow: hidden;
+}
+.thread-panel-frame {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.thread-panel-frame.is-focused {
+  margin: 0 auto;
+}
+.thread-panel-frame .team-thread {
+  max-width: none;
+  height: 100%;
+  background: var(--background);
+}
+.thread-panel-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.animated-icon,
+.animated-icon > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.animated-icon {
+  pointer-events: none;
+}
+@media (max-width: 760px) {
+  .thread-panel-frame:not(.is-focused) {
+    width: 100% !important;
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 2;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .team-room-link,
+  .settings-nav-group a {
+    transition:
+      background-color 140ms ease,
+      color 140ms ease;
+  }
+  .chat-row-actions {
+    transition: opacity 120ms ease;
+  }
+}
+
+.credential-guide {
+  border-block: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.credential-guide summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 0;
+  cursor: pointer;
+  color: var(--foreground);
+}
+.credential-guide summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.credential-guide[open] summary::after {
+  content: "−";
+}
+.credential-guide summary::-webkit-details-marker {
+  display: none;
+}
+.credential-guide > div {
+  padding: 0 0 18px 24px;
+  max-width: 700px;
+}
+.credential-guide ol {
+  padding-left: 18px;
+  list-style: decimal;
+}
+.credential-guide li + li {
+  margin-top: 10px;
+}
+.credential-guide p {
+  margin-block: 12px;
+  color: var(--muted-foreground);
+}
+.credential-guide a,
+.credential-guide-short a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.credential-guide a svg,
+.credential-guide-short a svg {
+  display: inline;
+  vertical-align: middle;
+  margin-left: 3px;
+}
+.credential-guide-table {
+  overflow-x: auto;
+  margin-top: 14px;
+}
+.credential-guide table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.credential-guide th,
+.credential-guide td {
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.credential-guide-short {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted-foreground);
 }

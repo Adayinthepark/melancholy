@@ -1,6 +1,7 @@
 "use client";
+import { AnimatedIcon } from "./animated-icon";
 import { useEffect, useState } from "react";
-import { Maximize2, ArrowLeft, BarChart3 } from "lucide-react";
+import { ArrowLeft, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Choice } from "./team-settings";
 import { api } from "@/lib/client";
@@ -75,7 +76,7 @@ export function ThreadControls({
           }
           aria-label={focused ? "Back to channel" : "Open thread page"}
         >
-          {focused ? <ArrowLeft /> : <Maximize2 />}
+          {focused ? <ArrowLeft /> : <AnimatedIcon name="expand" />}
         </a>
       </Button>
       <UsageDialog

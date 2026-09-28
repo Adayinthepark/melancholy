@@ -1,3 +1,4 @@
+import { MotionPreferences } from "@/components/motion-preferences";
 import type { Metadata } from "next";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,7 +24,9 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <TooltipProvider>{children}</TooltipProvider>
+        <MotionPreferences>
+          <TooltipProvider>{children}</TooltipProvider>
+        </MotionPreferences>
         <Toaster position="top-center" />
       </body>
     </html>

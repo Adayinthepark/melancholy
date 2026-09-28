@@ -1,4 +1,5 @@
 "use client";
+import { CredentialGuide } from "./credential-guide";
 import { SettingsSkeleton } from "./loading-states";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
@@ -166,6 +167,9 @@ export function ConnectionsSettings({
           Add credential
         </Button>
       </div>
+      {(group === "github" || group === "cloudflare") && (
+        <CredentialGuide provider={group} />
+      )}
       {error ? (
         <p role="alert">
           {error}{" "}
@@ -236,6 +240,9 @@ export function ConnectionsSettings({
                 : "Values are encrypted when saved and cannot be displayed again."}
             </DialogDescription>
           </DialogHeader>
+          {(provider === "github" || provider === "cloudflare") && (
+            <CredentialGuide provider={provider} compact />
+          )}
           <form onSubmit={save}>
             <FieldGroup>
               {group === "llm" && (

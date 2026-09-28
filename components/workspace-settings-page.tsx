@@ -1,4 +1,5 @@
 "use client";
+import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -58,6 +59,7 @@ const details: Record<string, string> = {
     "Reported token usage by server, channel and thread. Input includes cached tokens.",
 };
 export function WorkspaceSettingsPage() {
+  const reducedMotion = useReducedMotion();
   const pathname = usePathname();
   const section = pathname.split("/")[3] || "general";
   const [workspace, setWorkspace] = useState<TeamWorkspace | null>(null),
@@ -162,7 +164,13 @@ export function WorkspaceSettingsPage() {
             {dark ? <Sun /> : <Moon />}
           </Button>
         </header>
-        <div className="workspace-settings-content">
+        <motion.div
+          className="workspace-settings-content"
+          key={section}
+          initial={{ opacity: reducedMotion ? 1 : 0.6 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: reducedMotion ? 0 : 0.16 }}
+        >
           <h1>{title || "Page not found"}</h1>
           <p className="settings-intro">
             {details[section] || "Choose a settings page from the navigation."}
@@ -251,7 +259,7 @@ export function WorkspaceSettingsPage() {
               )}
             </>
           )}
-        </div>
+        </motion.div>
       </main>
       {workspace && (
         <TeamSettings

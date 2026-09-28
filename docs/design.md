@@ -65,3 +65,18 @@ rows. Credential creation and replacement use focused dialogs; values are never
 shown after saving. On phones the category navigation scrolls horizontally.
 The sidebar brand row starts at the top edge, aligned with the channel header,
 without an extra top padding band.
+
+## Interaction motion
+
+Use Motion for a 240 ms thread expansion/collapse, keeping the channel mounted
+and the thread text at its final width to avoid squeezing every line. Phone
+threads slide over the channel; closing reveals the existing scroll position.
+Thread switches and settings navigation use a short opacity transition without
+moving headings or replaying the whole message history. No idle animation loops.
+
+Search, reply, settings and expand controls use locally installed icons from
+[lucide-animated](https://lucide-animated.com). They respond across the button's
+hit area and on keyboard focus; decorative icons have no separate tab stop.
+The upstream MIT license is retained in `components/icons/LICENSE`.
+Respect reduced motion for panel geometry, fades and icon movement. Thread
+closing restores focus and exiting panes cannot receive keyboard input.

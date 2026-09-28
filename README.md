@@ -135,3 +135,8 @@ Workers best practices and Wrangler. Sources are recorded in `skills-lock.json`.
 
 MIT. See [third-party notices](THIRD_PARTY_NOTICES.md) for components, fonts and
 bundled skills.
+
+## Guides
+
+- [GitHub and Cloudflare credential setup (中文)](docs/credentials.md)
+- [iOS client and push gateway proposal (中文)](docs/ios-client.md) — design only; not shipped.

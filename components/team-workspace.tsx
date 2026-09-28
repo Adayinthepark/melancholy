@@ -1,13 +1,14 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatedIcon } from "./animated-icon";
+import { ThreadPanel } from "./thread-panel";
 import Link from "next/link";
 import { MessagesSkeleton, WorkspaceSkeleton } from "./loading-states";
 import {
   Hash,
   Lock,
   Plus,
-  Search,
-  Settings2,
   Sun,
   Moon,
   PanelLeft,
@@ -101,6 +102,9 @@ function merged(previous: MessagePage, next: MessagePage): MessagePage {
 export function TeamWorkspaceApp({
   focusedThread,
 }: { focusedThread?: string } = {}) {
+  const reducedMotion = useReducedMotion();
+  const threadTrigger = useRef<HTMLElement | null>(null);
+  const restoreThreadFocus = useRef(false);
   const [pending, setPending] = useState<TeamMessage[]>([]),
     [workbench, setWorkbench] = useState(false),
     [usage, setUsage] = useState(false);
@@ -396,8 +400,27 @@ export function TeamWorkspaceApp({
     );
   }
   function openThread(m: TeamMessage) {
+    restoreThreadFocus.current = false;
+    threadTrigger.current = document.activeElement as HTMLElement;
     choose(m.room_id, m.parent_id || m.id);
   }
+  function closeThread() {
+    if (focusedThread) {
+      location.assign("/?room=" + roomId);
+      return;
+    }
+    restoreThreadFocus.current = true;
+    choose(roomId);
+  }
+  function afterThreadClose() {
+    if (!restoreThreadFocus.current || active.current.threadId) return;
+    restoreThreadFocus.current = false;
+    const target = threadTrigger.current?.isConnected
+      ? threadTrigger.current
+      : document.querySelector<HTMLElement>(".team-channel textarea");
+    target?.focus({ preventScroll: true });
+  }
+
   function theme() {
     const next = !dark;
     setDark(next);
@@ -664,13 +687,13 @@ export function TeamWorkspaceApp({
           <DropdownMenuContent align="end">
             <DropdownMenuGroup>
               <DropdownMenuItem onClick={() => setSettings(true)}>
-                <Settings2 />
+                <AnimatedIcon name="settings" />
                 Profile settings
               </DropdownMenuItem>
               {me.role === "owner" && (
                 <DropdownMenuItem asChild>
                   <Link href="/settings/workspace">
-                    <Settings2 />
+                    <AnimatedIcon name="settings" />
                     Workspace settings
                   </Link>
                 </DropdownMenuItem>
@@ -782,7 +805,7 @@ export function TeamWorkspaceApp({
               aria-label="Search workspace"
               onClick={() => setSearchOpen(true)}
             >
-              <Search />
+              <AnimatedIcon name="search" />
             </Button>
             <Button
               variant="ghost"
@@ -864,55 +887,65 @@ export function TeamWorkspaceApp({
               </Empty>
             )}
           </section>
-          {threadId && current && (
-            <section className="team-thread" aria-label="Thread">
-              <header>
-                <strong>Thread</strong>
-                <ThreadControls
-                  id={threadId}
-                  roomId={roomId}
-                  people={current.members}
-                  focused={!!focusedThread}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Close thread"
-                  onClick={() =>
-                    focusedThread
-                      ? location.assign("/?room=" + roomId)
-                      : choose(roomId)
-                  }
+          <AnimatePresence initial={false} onExitComplete={afterThreadClose}>
+            {threadId && current && (
+              <ThreadPanel
+                key="thread"
+                focused={!!focusedThread}
+                onClose={closeThread}
+              >
+                <header>
+                  <strong>Thread</strong>
+                  <ThreadControls
+                    id={threadId}
+                    roomId={roomId}
+                    people={current.members}
+                    focused={!!focusedThread}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Close thread"
+                    onClick={closeThread}
+                  >
+                    <X />
+                  </Button>
+                </header>
+                <motion.div
+                  className="thread-panel-content"
+                  key={threadId}
+                  initial={{ opacity: reducedMotion ? 1 : 0.6 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: reducedMotion ? 0 : 0.14 }}
                 >
-                  <X />
-                </Button>
-              </header>
-              {root && root.id === threadId && root.room_id === roomId ? (
-                <ChatTimeline
-                  messages={[root, ...visibleReplies]}
-                  onRetry={retryMessage}
-                  me={me}
-                  hasMore={replies.hasMore}
-                  onOlder={() => void older(true)}
-                  onThread={() => {}}
-                  onChange={() => latestRefresh.current()}
-                  thread
-                />
-              ) : (
-                <MessagesSkeleton />
-              )}
-              {current.joined && (
-                <ChatComposer
-                  key={roomId + threadId}
-                  roomId={roomId}
-                  parentId={threadId}
-                  people={current.members}
-                  label="Reply in thread"
-                  onSend={sendDraft}
-                />
-              )}
-            </section>
-          )}
+                  {root && root.id === threadId && root.room_id === roomId ? (
+                    <ChatTimeline
+                      messages={[root, ...visibleReplies]}
+                      onRetry={retryMessage}
+                      me={me}
+                      hasMore={replies.hasMore}
+                      onOlder={() => void older(true)}
+                      onThread={() => {}}
+                      onChange={() => latestRefresh.current()}
+                      thread
+                    />
+                  ) : (
+                    <MessagesSkeleton />
+                  )}
+                  {current.joined && (
+                    <ChatComposer
+                      key={roomId + threadId}
+                      roomId={roomId}
+                      parentId={threadId}
+                      people={current.members}
+                      label="Reply in thread"
+                      onSend={sendDraft}
+                    />
+                  )}
+                </motion.div>
+              </ThreadPanel>
+            )}
+          </AnimatePresence>
         </div>
       </main>
       {current && (

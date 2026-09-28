@@ -1,10 +1,10 @@
 "use client";
+import { AnimatedIcon } from "./animated-icon";
 import { useState } from "react";
 import { MessageMarkdown } from "./message-markdown";
 import { PersonAvatar } from "./person-avatar";
 import { mentionText, encodeMentions } from "@/lib/mentions";
 import {
-  MessageSquare,
   SmilePlus,
   MoreHorizontal,
   Pencil,
@@ -349,7 +349,7 @@ export function ChatRow({
               size="xs"
               onClick={() => onThread(m)}
             >
-              <MessageSquare />
+              <AnimatedIcon name="reply" size={14} />
               {m.reply_count} {m.reply_count === 1 ? "reply" : "replies"}
             </Button>
           )}
@@ -380,7 +380,7 @@ export function ChatRow({
               aria-label="Reply in thread"
               onClick={() => onThread(m)}
             >
-              <MessageSquare />
+              <AnimatedIcon name="reply" size={14} />
             </Button>
           )}
           <DropdownMenu>

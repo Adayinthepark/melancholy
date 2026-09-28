@@ -101,7 +101,7 @@ export function ServerSettings({
   const command =
     "npx --yes --package=github:adayinthepark/melancholy melancholy-connect --config ./melancholy.json";
   const content = (
-    <>
+    <div className="server-settings">
       {created ? (
         <div className="connection-instructions">
           <p>
@@ -162,8 +162,8 @@ export function ServerSettings({
                         </Button>
                       </form>
                     ) : (
-                      <strong>
-                        {server.name}
+                      <div className="server-title">
+                        <strong>{server.name}</strong>
                         <Button
                           variant="ghost"
                           size="icon-xs"
@@ -175,7 +175,7 @@ export function ServerSettings({
                         >
                           <Pencil />
                         </Button>
-                      </strong>
+                      </div>
                     )}
                     <span>
                       {server.runtime === "codex" ? "Codex" : "Claude Code"}
@@ -183,55 +183,60 @@ export function ServerSettings({
                     </span>
                     {server.cwd && <code>{server.cwd}</code>}
                   </div>
-                  <Badge variant={server.online ? "secondary" : "outline"}>
-                    {server.online ? "Connected" : "Offline"}
-                  </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={"Usage for " + server.name}
-                    onClick={() => setUsageServer(server.id)}
-                  >
-                    <ChartNoAxesColumn />
-                  </Button>
-                  {remove === server.id ? (
-                    <div className="flex gap-1">
-                      <Button
-                        variant="destructive"
-                        size="xs"
-                        onClick={() => void removeServer(server.id)}
-                      >
-                        Remove
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        onClick={() => setRemove(null)}
-                      >
-                        Keep
-                      </Button>
-                    </div>
-                  ) : (
+                  <div className="server-actions">
+                    <Badge variant={server.online ? "secondary" : "outline"}>
+                      {server.online ? "Connected" : "Offline"}
+                    </Badge>
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={`Remove ${server.name}`}
-                      onClick={() => setRemove(server.id)}
+                      aria-label={"Usage for " + server.name}
+                      onClick={() => setUsageServer(server.id)}
                     >
-                      <Trash2 data-icon="inline-start" />
+                      <ChartNoAxesColumn />
                     </Button>
-                  )}
+                    {remove === server.id ? (
+                      <div className="flex gap-1">
+                        <Button
+                          variant="destructive"
+                          size="xs"
+                          onClick={() => void removeServer(server.id)}
+                        >
+                          Remove
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => setRemove(null)}
+                        >
+                          Keep
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Remove ${server.name}`}
+                        onClick={() => setRemove(server.id)}
+                      >
+                        <Trash2 data-icon="inline-start" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           )}
           {servers.length > 0 && <Separator />}
           <form
+            className="server-create-form"
+            aria-labelledby="connect-server-heading"
             onSubmit={(e) => {
               e.preventDefault();
               void create();
             }}
           >
+            <h2 id="connect-server-heading">Connect a server</h2>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="server-name">Server name</FieldLabel>
@@ -261,7 +266,11 @@ export function ServerSettings({
                   </SelectContent>
                 </Select>
               </Field>
-              <Button type="submit" disabled={busy || !name.trim()}>
+              <Button
+                className="self-start"
+                type="submit"
+                disabled={busy || !name.trim()}
+              >
                 <Plus data-icon="inline-start" />
                 {busy ? "Creating…" : "Connect server"}
               </Button>
@@ -269,7 +278,7 @@ export function ServerSettings({
           </form>
         </>
       )}
-    </>
+    </div>
   );
   return (
     <>

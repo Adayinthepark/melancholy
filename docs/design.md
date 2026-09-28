@@ -37,12 +37,13 @@ inside the conversation. Controls use literal names: New message, Add member, St
 
 The desktop references are the user’s ChatGPT app screenshots: a quiet gray
 frame, softly selected navigation rows, a rounded white content surface and a
-floating composer. A 260–272 px sidebar sits beside the main surface, with an
-8 px outer gutter. Brand and conversation headers share a 60 px height.
+floating composer. A 248–256 px sidebar sits beside the main surface, with an
+8 px outer gutter. Brand and conversation headers share a 52 px height.
+Desktop navigation rows are 32 px high, with compact section labels and gaps.
 
 Messages remain left aligned in a centered column up to 900 px wide. Body text
 stays within 78 characters where possible. Keep the 2 px name-to-body gap and
-use breathing room between messages. The composer shares the column width,
+use 10 px vertical row padding between messages. The composer shares the column width,
 with a subtle shadow and circular send control. Preserve flat chronological
 rows for people and agents. Unread conversations use weight and a small marker; mention counts appear
 beside their names. A thread opens in a side pane while the channel stays mounted.
@@ -72,10 +73,11 @@ Verify actual screenshots in both themes and at a phone width before release.
 
 ## Settings
 
-Profile settings opens from the account menu and contains avatar, display name,
+The account menu uses a 208 px popover with single-line Profile, Workspace and
+Sign out entries, distinct icons and 36 px rows. Profile settings opens from it and contains avatar, display name,
 username and password. Workspace settings has its own `/settings/workspace`
 page and a narrow navigation column: General/Members, Integrations & credentials,
-Bot & Agent, Usage. The content is left aligned with 28 px section headings, generous insets,
+Bot & Agent, Usage. The content is left aligned with 24 px section headings, 36 px desktop insets,
 icon-supported navigation, restrained dividers and focused forms. Credential creation and replacement use focused dialogs; values are never
 shown after saving. On phones the category navigation scrolls horizontally.
 The sidebar brand row starts at the shared surface edge, aligned with the

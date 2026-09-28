@@ -13,6 +13,7 @@ import {
   Moon,
   PanelLeft,
   X,
+  UserRound,
   Users,
   MessageSquare,
   SquarePen,
@@ -685,17 +686,23 @@ export function TeamWorkspaceApp({
               <ChevronDown />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent
+            className="team-account-menu"
+            align="end"
+            side="top"
+            sideOffset={8}
+            collisionPadding={12}
+          >
             <DropdownMenuGroup>
               <DropdownMenuItem onClick={() => setSettings(true)}>
-                <AnimatedIcon name="settings" />
-                Profile settings
+                <UserRound />
+                Profile
               </DropdownMenuItem>
               {me.role === "owner" && (
                 <DropdownMenuItem asChild>
                   <Link href="/settings/workspace">
                     <AnimatedIcon name="settings" />
-                    Workspace settings
+                    Workspace
                   </Link>
                 </DropdownMenuItem>
               )}

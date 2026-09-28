@@ -41,7 +41,7 @@ test("workspace settings are separate from profiles and manage encrypted credent
       .getByRole("button", { name: "Workspace menu", exact: true })
       .click();
     await page
-      .getByRole("menuitem", { name: "Workspace settings", exact: true })
+      .getByRole("menuitem", { name: "Workspace", exact: true })
       .click();
     await expect(page).toHaveURL(/\/settings\/workspace$/);
     await expect(page.getByRole("dialog")).toHaveCount(0);

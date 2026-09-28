@@ -648,9 +648,9 @@
   background: var(--canvas);
 }
 .team-sidebar {
-  width: 260px;
+  width: 248px;
   flex-shrink: 0;
-  padding: 0 14px 6px;
+  padding: 0 12px 6px;
   display: flex;
   flex-direction: column;
   background: var(--sidebar);
@@ -663,10 +663,10 @@
 .team-new-message {
   width: 100%;
   justify-content: flex-start;
-  height: 40px;
+  height: 34px;
   gap: 10px;
   padding-inline: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 .team-nav {
   flex: 1;
@@ -677,23 +677,23 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 4px 12px;
   color: var(--muted-foreground);
   font-size: 12px;
-  margin-top: 8px;
+  margin-top: 4px;
 }
 .team-room-link {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 9px;
-  min-height: 38px;
-  padding: 8px 12px;
+  min-height: 32px;
+  padding: 5px 12px;
   border-radius: 10px;
   text-align: left;
   color: var(--sidebar-foreground);
   font-size: 13px;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 .team-room-link svg {
   width: 15px;
@@ -737,17 +737,31 @@
 }
 .team-browse {
   font-size: 12px;
-  margin: 4px 0 20px;
+  margin: 2px 0 8px;
   padding-inline: 12px;
   color: var(--muted-foreground);
   justify-content: flex-start;
   width: 100%;
 }
 .team-account {
-  padding: 12px 6px 0;
+  padding: 8px 6px 0;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.team-account-menu {
+  width: 208px;
+  max-width: calc(100vw - 24px);
+  padding: 5px;
+  border-radius: 12px;
+}
+.team-account-menu [data-slot="dropdown-menu-item"] {
+  min-height: 36px;
+  gap: 10px;
+  padding: 7px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+  border-radius: 7px;
 }
 .team-profile {
   display: flex;
@@ -789,13 +803,13 @@
   box-shadow: var(--surface-shadow);
 }
 .team-topbar {
-  height: 60px;
+  height: 52px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 24px;
+  padding: 0 20px;
 }
 .team-heading {
   display: flex;
@@ -868,14 +882,14 @@
 }
 .chat-message-list {
   gap: 0 !important;
-  padding: 16px 0 24px;
+  padding: 8px 0 16px;
   width: 100%;
   max-width: 900px;
   margin-inline: auto;
 }
 .chat-row {
   position: relative;
-  padding: 14px 28px;
+  padding: 10px 24px;
   border-radius: 12px;
 }
 .chat-row:hover {
@@ -998,7 +1012,7 @@
   width: 100%;
   max-width: 900px;
   margin-inline: auto;
-  padding: 12px 28px 22px;
+  padding: 8px 24px 14px;
   position: relative;
 }
 .chat-composer [data-slot="input-group"] {
@@ -1011,7 +1025,7 @@
   border-color: var(--ring);
 }
 .chat-composer [data-slot="input-group-addon"] {
-  padding: 4px 12px 10px;
+  padding: 2px 10px 8px;
   gap: 6px;
 }
 .chat-composer [data-slot="input-group-addon"] button {
@@ -1022,9 +1036,9 @@
   height: 34px;
 }
 .chat-composer textarea {
-  min-height: 64px;
+  min-height: 56px;
   max-height: 180px;
-  padding: 16px 18px 8px;
+  padding: 12px 16px 6px;
   font-size: 15px;
   line-height: 1.6;
   resize: none;
@@ -1197,10 +1211,10 @@
   margin-top: 5px;
 }
 .team-thread .chat-row {
-  padding: 14px 20px;
+  padding: 10px 16px;
 }
 .team-thread .chat-composer {
-  padding: 12px 16px 22px;
+  padding: 8px 14px 14px;
 }
 .team-thread .chat-avatar {
   width: 27px !important;
@@ -1237,7 +1251,7 @@
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   min-width: 0;
 }
 .settings-member-list {
@@ -1365,6 +1379,15 @@
   width: 270px !important;
   gap: 0 !important;
 }
+.team-mobile-nav .team-room-link,
+.team-mobile-nav .team-new-message {
+  min-height: 38px;
+}
+@media (pointer: coarse) {
+  .team-account-menu [data-slot="dropdown-menu-item"] {
+    min-height: 44px;
+  }
+}
 .connection-label {
   font-size: 10px;
   color: var(--muted-foreground);
@@ -1374,7 +1397,7 @@
     width: 450px;
   }
   .team-sidebar {
-    width: 272px;
+    width: 256px;
   }
 }
 @media (max-width: 1050px) {
@@ -1515,8 +1538,8 @@
   height: 30px;
 }
 .team-room-link .person-avatar {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   font-size: 9px;
 }
 .person-row .person-avatar {
@@ -1536,8 +1559,8 @@
 .team-mobile-nav .workspace-brand {
   font-size: 15px;
   padding: 0 10px;
-  min-height: 60px;
-  margin-bottom: 8px;
+  min-height: 52px;
+  margin-bottom: 4px;
 }
 .mention-name {
   background: var(--accent);
@@ -1601,13 +1624,13 @@
   overflow: hidden;
 }
 .thread-focus .team-thread .chat-row {
-  padding: 16px 28px;
+  padding: 10px 24px;
 }
 .thread-focus .team-thread .markdown {
   font-size: 15px;
 }
 .thread-focus .team-thread .chat-composer {
-  padding-inline: 28px;
+  padding-inline: 24px;
 }
 .thread-focus.team-shell {
   padding-left: 8px;
@@ -1840,23 +1863,23 @@
   background: var(--canvas);
 }
 .workspace-settings-nav {
-  width: 260px;
+  width: 248px;
   flex-shrink: 0;
-  padding: 0 14px 12px;
+  padding: 0 12px 12px;
   background: var(--sidebar);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
 }
 .workspace-settings-nav .workspace-brand {
-  min-height: 60px;
+  min-height: 52px;
   padding: 0 10px;
 }
 .settings-back {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 7px 12px;
   border-radius: 10px;
   color: var(--muted-foreground);
   font-size: 13px;
@@ -1869,11 +1892,11 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: 24px;
+  margin-top: 16px;
 }
 .settings-nav-group > span {
   color: var(--muted-foreground);
-  padding: 0 12px 8px;
+  padding: 0 12px 5px;
   font-size: 12px;
 }
 .settings-nav-group a {
@@ -1881,8 +1904,8 @@
   align-items: center;
   gap: 10px;
   font-size: 13px;
-  min-height: 38px;
-  padding: 8px 12px;
+  min-height: 32px;
+  padding: 5px 12px;
   border-radius: 10px;
 }
 .settings-nav-group a svg {
@@ -1914,8 +1937,8 @@
   box-shadow: var(--surface-shadow);
 }
 .workspace-settings-main > header {
-  height: 60px;
-  padding: 0 32px;
+  height: 52px;
+  padding: 0 36px;
   color: var(--muted-foreground);
   display: flex;
   align-items: center;
@@ -1924,10 +1947,10 @@
 }
 .workspace-settings-content {
   max-width: 1060px;
-  padding: 32px 56px 72px;
+  padding: 20px 36px 48px;
 }
 .workspace-settings-content h1 {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.8px;
 }
@@ -1935,7 +1958,7 @@
   color: var(--muted-foreground);
   font-size: 14px;
   line-height: 1.7;
-  margin: 10px 0 36px;
+  margin: 8px 0 24px;
   max-width: 68ch;
 }
 .workspace-general-form {
@@ -1970,7 +1993,7 @@
   display: flex;
   gap: 16px;
   align-items: center;
-  padding: 24px 0;
+  padding: 16px 0;
   border-bottom: 1px solid var(--border);
 }
 .credential-description {
@@ -2059,6 +2082,7 @@
     display: none;
   }
   .settings-nav-group a {
+    min-height: 38px;
     white-space: nowrap;
   }
   .settings-profile-link {
@@ -2080,10 +2104,10 @@
     padding: 0 20px;
   }
   .workspace-settings-content {
-    padding: 24px 20px 48px;
+    padding: 16px 20px 40px;
   }
   .workspace-settings-content h1 {
-    font-size: 25px;
+    font-size: 24px;
   }
   .settings-section-toolbar {
     align-items: flex-start;
@@ -2118,17 +2142,17 @@
   padding: 28px 10px;
 }
 .loading-composer {
-  padding: 12px 28px 22px;
+  padding: 8px 24px 14px;
   width: 100%;
   max-width: 900px;
   margin-inline: auto;
 }
 .loading-composer [data-slot="skeleton"] {
   border-radius: 24px;
-  height: 112px;
+  height: 104px;
 }
 .workspace-placeholder .workspace-brand {
-  min-height: 60px;
+  min-height: 52px;
 }
 .workspace-settings-content .settings-section > button {
   align-self: flex-start;

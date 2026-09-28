@@ -22,8 +22,6 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { ConnectionsSettings } from "./connections-settings";
-import { UsageDialog } from "./usage-dialog";
 import { PersonAvatar } from "./person-avatar";
 import { api, post } from "@/lib/client";
 import type { TeamWorkspace } from "@/lib/chat";
@@ -71,17 +69,18 @@ export function TeamSettings({
   onOpenChange,
   workspace,
   onChange,
-  onServers,
+  section = "profile",
+  embedded = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   workspace: TeamWorkspace;
   onChange: () => Promise<void>;
-  onServers: () => void;
+  section?: "profile" | "members" | "integrations";
+  embedded?: boolean;
 }) {
-  const [usageOpen, setUsageOpen] = useState(false);
-  const [tab, setTab] = useState("profile"),
-    [name, setName] = useState(workspace.me.name),
+  const tab = section;
+  const [name, setName] = useState(workspace.me.name),
     [username, setUsername] = useState(workspace.me.handle),
     [password, setPassword] = useState(""),
     [invite, setInvite] = useState(""),
@@ -97,7 +96,7 @@ export function TeamSettings({
   const admin = workspace.me.role === "owner",
     bots = workspace.people.filter((p) => p.kind === "bot");
   async function refreshTokens() {
-    if (admin)
+    if (admin && section === "integrations")
       setTokens((await api<{ tokens: Token[] }>("/chat/tokens")).tokens);
   }
   useEffect(() => {
@@ -110,7 +109,7 @@ export function TeamSettings({
       setCredential("");
       setPassword("");
     }
-  }, [open]);
+  }, [open, section]);
   async function act(fn: () => Promise<unknown>) {
     setBusy(true);
     try {
@@ -152,415 +151,397 @@ export function TeamSettings({
       </div>
     );
   }
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="team-settings sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Workspace settings</DialogTitle>
-          <DialogDescription className="sr-only">
-            Your profile, workspace members, and bot integrations.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="settings-tabs" role="tablist">
-          {[
-            "profile",
-            "members",
-            ...(admin ? ["integrations", "connections"] : []),
-          ].map((t) => (
-            <Button
-              role="tab"
-              aria-selected={tab === t}
-              key={t}
-              size="sm"
-              variant={tab === t ? "secondary" : "ghost"}
-              onClick={() => setTab(t)}
-            >
-              {t[0].toUpperCase() + t.slice(1)}
-            </Button>
-          ))}
+  const content = (
+    <>
+      {tab === "profile" && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void act(async () => {
+              await api("/chat/profile", {
+                method: "PATCH",
+                body: JSON.stringify({
+                  name,
+                  handle: username,
+                  ...(password ? { password } : {}),
+                }),
+              });
+              setPassword("");
+              toast("Profile saved");
+            });
+          }}
+        >
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="profile-avatar">Avatar</FieldLabel>
+              <div className="profile-avatar-control">
+                <PersonAvatar person={workspace.me} />
+                <Input
+                  id="profile-avatar"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  aria-label="Upload avatar"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file)
+                      void act(async () => {
+                        await api("/chat/avatar", {
+                          method: "POST",
+                          headers: { "Content-Type": file.type },
+                          body: file,
+                        });
+                      });
+                  }}
+                />
+                {workspace.me.avatar_key && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      void act(() => api("/chat/avatar", { method: "DELETE" }))
+                    }
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="profile-name">Display name</FieldLabel>
+              <Input
+                id="profile-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                maxLength={60}
+              />
+            </Field>
+            <Field>
+              <FieldLabel>Username</FieldLabel>
+              <Input
+                value={username}
+                required
+                pattern="[a-z][a-z0-9_-]{1,39}"
+                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                aria-label="Your username"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="profile-password">New password</FieldLabel>
+              <Input
+                id="profile-password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="At least 12 characters"
+                minLength={12}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
+            <Button disabled={busy}>Save profile</Button>
+          </FieldGroup>
+        </form>
+      )}
+      {tab === "members" && (
+        <div className="settings-section">
+          {admin && (
+            <>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void act(async () =>
+                    setInvite(
+                      (await post<{ url: string }>("/chat/invitations")).url,
+                    ),
+                  )
+                }
+              >
+                <Plus />
+                Create invitation
+              </Button>
+              {invite && (
+                <>
+                  {secretField(invite, "Invitation link")}
+                  <p className="text-xs text-muted-foreground">
+                    Single use. Expires in 7 days.
+                  </p>
+                </>
+              )}
+              <Separator />
+            </>
+          )}
+          <div className="settings-member-list">
+            {workspace.people
+              .filter((p) => p.kind === "human")
+              .map((p) => (
+                <div key={p.id} className="person-row">
+                  <PersonAvatar person={p} />
+                  <div>
+                    <strong>{p.name}</strong>
+                    <span>@{p.handle}</span>
+                  </div>
+                  {p.role === "owner" ? (
+                    <Badge variant="outline">owner</Badge>
+                  ) : (
+                    admin &&
+                    (confirm === p.id ? (
+                      <Button
+                        variant="destructive"
+                        size="xs"
+                        disabled={busy}
+                        onClick={() =>
+                          void act(async () => {
+                            await api("/chat/people/" + p.id, {
+                              method: "DELETE",
+                            });
+                            setConfirm("");
+                          })
+                        }
+                      >
+                        Confirm removal
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={"Remove access for " + p.name}
+                        onClick={() => setConfirm(p.id)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    ))
+                  )}
+                </div>
+              ))}
+          </div>
         </div>
-        {tab === "connections" && admin && <ConnectionsSettings />}
-        {tab === "profile" && (
+      )}
+      {tab === "integrations" && admin && (
+        <div className="settings-section">
+          <div className="settings-member-list">
+            {bots.map((p) => (
+              <div key={p.id} className="person-row">
+                <PersonAvatar person={p} />
+                <div>
+                  <strong>{p.name}</strong>
+                  <span>@{p.handle}</span>
+                </div>
+                <Badge variant="outline">{p.server_id ? "agent" : "bot"}</Badge>
+              </div>
+            ))}
+          </div>
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void act(async () => {
-                await api("/chat/profile", {
-                  method: "PATCH",
-                  body: JSON.stringify({
-                    name,
-                    handle: username,
-                    ...(password ? { password } : {}),
-                  }),
+                const bot = await post<{ id: string }>("/chat/bots", {
+                  name: botName,
+                  handle,
                 });
-                setPassword("");
-                toast("Profile saved");
+                setBotId(bot.id);
+                setBotName("");
+                setHandle("");
+                toast("Bot created");
               });
             }}
           >
             <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="profile-avatar">Avatar</FieldLabel>
-                <div className="profile-avatar-control">
-                  <PersonAvatar person={workspace.me} />
+              <div className="form-two-columns">
+                <Field>
+                  <FieldLabel htmlFor="bot-name">Bot name</FieldLabel>
                   <Input
-                    id="profile-avatar"
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    aria-label="Upload avatar"
+                    id="bot-name"
+                    required
+                    value={botName}
+                    maxLength={60}
                     onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file)
-                        void act(async () => {
-                          await api("/chat/avatar", {
-                            method: "POST",
-                            headers: { "Content-Type": file.type },
-                            body: file,
-                          });
-                        });
+                      setBotName(e.target.value);
+                      setHandle(
+                        e.target.value
+                          .toLowerCase()
+                          .replace(/[^a-z0-9_-]/g, "-")
+                          .slice(0, 40),
+                      );
                     }}
                   />
-                  {workspace.me.avatar_key && (
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="bot-handle">Bot username</FieldLabel>
+                  <Input
+                    id="bot-handle"
+                    required
+                    pattern="[a-z][a-z0-9_-]{1,39}"
+                    value={handle}
+                    onChange={(e) => setHandle(e.target.value)}
+                  />
+                </Field>
+              </div>
+              <Button variant="outline" disabled={busy}>
+                Create bot
+              </Button>
+            </FieldGroup>
+          </form>
+          {bots.length > 0 && (
+            <>
+              <Separator />
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void act(async () => {
+                    const result = await post<{
+                      token: string;
+                      url?: string;
+                    }>("/chat/tokens", {
+                      botId,
+                      kind,
+                      ...(roomId !== "*" ? { roomId } : {}),
+                    });
+                    setCredential(result.url || result.token);
+                  });
+                }}
+              >
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="token-bot">Bot</FieldLabel>
+                    <Choice
+                      id="token-bot"
+                      value={botId}
+                      onChange={(v) => {
+                        setBotId(v);
+                        setRoomId("*");
+                      }}
+                      options={bots.map((p) => ({
+                        value: p.id,
+                        label: p.name + " (@" + p.handle + ")",
+                      }))}
+                    />
+                  </Field>
+                  <div className="form-two-columns">
+                    <Field>
+                      <FieldLabel htmlFor="token-kind">Credential</FieldLabel>
+                      <Choice
+                        id="token-kind"
+                        value={kind}
+                        onChange={setKind}
+                        options={[
+                          { value: "api", label: "API token" },
+                          { value: "webhook", label: "Incoming webhook" },
+                        ]}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="token-room">Conversation</FieldLabel>
+                      <Choice
+                        id="token-room"
+                        value={roomId}
+                        onChange={setRoomId}
+                        options={[
+                          {
+                            value: "*",
+                            label:
+                              kind === "webhook"
+                                ? "Choose a conversation"
+                                : "All joined conversations",
+                          },
+                          ...workspace.rooms
+                            .filter(
+                              (r) =>
+                                r.joined &&
+                                r.members.some((p) => p.id === botId),
+                            )
+                            .map((r) => ({
+                              value: r.id,
+                              label:
+                                r.name ||
+                                r.members.map((p) => p.name).join(", "),
+                            })),
+                        ]}
+                      />
+                    </Field>
+                  </div>
+                  <Button
+                    disabled={
+                      busy || !botId || (kind === "webhook" && roomId === "*")
+                    }
+                  >
+                    Create credential
+                  </Button>
+                </FieldGroup>
+              </form>
+              {credential && (
+                <>
+                  {secretField(credential, "New credential")}
+                  <p className="text-xs text-muted-foreground">
+                    Shown once. Keep it private.
+                  </p>
+                </>
+              )}
+            </>
+          )}
+          {tokens.length > 0 && (
+            <>
+              <Separator />
+              <div className="settings-member-list">
+                {tokens.map((t) => (
+                  <div key={t.id} className="person-row">
+                    <div>
+                      <strong>
+                        {bots.find((p) => p.id === t.bot_id)?.name || "Bot"}
+                      </strong>
+                      <span>
+                        {t.kind === "webhook" ? "Webhook" : "API token"}
+                        {t.room_id
+                          ? " · " +
+                            (workspace.rooms.find((r) => r.id === t.room_id)
+                              ?.name || "Conversation")
+                          : ""}
+                      </span>
+                    </div>
                     <Button
-                      type="button"
                       variant="ghost"
-                      size="sm"
+                      size="xs"
+                      disabled={busy}
                       onClick={() =>
                         void act(() =>
-                          api("/chat/avatar", { method: "DELETE" }),
+                          api("/chat/tokens/" + t.id, { method: "DELETE" }),
                         )
                       }
                     >
-                      Remove
+                      Revoke
                     </Button>
-                  )}
-                </div>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="profile-name">Display name</FieldLabel>
-                <Input
-                  id="profile-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  maxLength={60}
-                />
-              </Field>
-              <Field>
-                <FieldLabel>Username</FieldLabel>
-                <Input
-                  value={username}
-                  required
-                  pattern="[a-z][a-z0-9_-]{1,39}"
-                  onChange={(e) => setUsername(e.target.value.toLowerCase())}
-                  aria-label="Your username"
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="profile-password">New password</FieldLabel>
-                <Input
-                  id="profile-password"
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="At least 12 characters"
-                  minLength={12}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </Field>
-              <Button disabled={busy}>Save profile</Button>
-            </FieldGroup>
-          </form>
-        )}
-        {tab === "members" && (
-          <div className="settings-section">
-            {admin && (
-              <>
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() =>
-                    void act(async () =>
-                      setInvite(
-                        (await post<{ url: string }>("/chat/invitations")).url,
-                      ),
-                    )
-                  }
-                >
-                  <Plus />
-                  Create invitation
-                </Button>
-                {invite && (
-                  <>
-                    {secretField(invite, "Invitation link")}
-                    <p className="text-xs text-muted-foreground">
-                      Single use. Expires in 7 days.
-                    </p>
-                  </>
-                )}
-                <Separator />
-              </>
-            )}
-            <div className="settings-member-list">
-              {workspace.people
-                .filter((p) => p.kind === "human")
-                .map((p) => (
-                  <div key={p.id} className="person-row">
-                    <PersonAvatar person={p} />
-                    <div>
-                      <strong>{p.name}</strong>
-                      <span>@{p.handle}</span>
-                    </div>
-                    {p.role === "owner" ? (
-                      <Badge variant="outline">owner</Badge>
-                    ) : (
-                      admin &&
-                      (confirm === p.id ? (
-                        <Button
-                          variant="destructive"
-                          size="xs"
-                          disabled={busy}
-                          onClick={() =>
-                            void act(async () => {
-                              await api("/chat/people/" + p.id, {
-                                method: "DELETE",
-                              });
-                              setConfirm("");
-                            })
-                          }
-                        >
-                          Confirm removal
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={"Remove access for " + p.name}
-                          onClick={() => setConfirm(p.id)}
-                        >
-                          <Trash2 />
-                        </Button>
-                      ))
-                    )}
                   </div>
                 ))}
-            </div>
-          </div>
-        )}
-        {tab === "integrations" && admin && (
-          <div className="settings-section">
-            <Button variant="outline" onClick={() => setUsageOpen(true)}>
-              Workspace token usage
-            </Button>
-            <UsageDialog open={usageOpen} onOpenChange={setUsageOpen} />
-            <Button variant="outline" onClick={onServers}>
-              <Server />
-              Connect an agent server
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Add the bot to a channel, then @mention it. Direct messages also
-              start agent tasks.
-            </p>
-            <Separator />
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void act(async () => {
-                  const bot = await post<{ id: string }>("/chat/bots", {
-                    name: botName,
-                    handle,
-                  });
-                  setBotId(bot.id);
-                  setBotName("");
-                  setHandle("");
-                  toast("Bot created");
-                });
-              }}
-            >
-              <FieldGroup>
-                <div className="form-two-columns">
-                  <Field>
-                    <FieldLabel htmlFor="bot-name">Bot name</FieldLabel>
-                    <Input
-                      id="bot-name"
-                      required
-                      value={botName}
-                      maxLength={60}
-                      onChange={(e) => {
-                        setBotName(e.target.value);
-                        setHandle(
-                          e.target.value
-                            .toLowerCase()
-                            .replace(/[^a-z0-9_-]/g, "-")
-                            .slice(0, 40),
-                        );
-                      }}
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="bot-handle">Bot username</FieldLabel>
-                    <Input
-                      id="bot-handle"
-                      required
-                      pattern="[a-z][a-z0-9_-]{1,39}"
-                      value={handle}
-                      onChange={(e) => setHandle(e.target.value)}
-                    />
-                  </Field>
-                </div>
-                <Button variant="outline" disabled={busy}>
-                  Create bot
-                </Button>
-              </FieldGroup>
-            </form>
-            {bots.length > 0 && (
-              <>
-                <Separator />
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void act(async () => {
-                      const result = await post<{
-                        token: string;
-                        url?: string;
-                      }>("/chat/tokens", {
-                        botId,
-                        kind,
-                        ...(roomId !== "*" ? { roomId } : {}),
-                      });
-                      setCredential(result.url || result.token);
-                    });
-                  }}
-                >
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="token-bot">Bot</FieldLabel>
-                      <Choice
-                        id="token-bot"
-                        value={botId}
-                        onChange={(v) => {
-                          setBotId(v);
-                          setRoomId("*");
-                        }}
-                        options={bots.map((p) => ({
-                          value: p.id,
-                          label: p.name + " (@" + p.handle + ")",
-                        }))}
-                      />
-                    </Field>
-                    <div className="form-two-columns">
-                      <Field>
-                        <FieldLabel htmlFor="token-kind">Credential</FieldLabel>
-                        <Choice
-                          id="token-kind"
-                          value={kind}
-                          onChange={setKind}
-                          options={[
-                            { value: "api", label: "API token" },
-                            { value: "webhook", label: "Incoming webhook" },
-                          ]}
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="token-room">
-                          Conversation
-                        </FieldLabel>
-                        <Choice
-                          id="token-room"
-                          value={roomId}
-                          onChange={setRoomId}
-                          options={[
-                            {
-                              value: "*",
-                              label:
-                                kind === "webhook"
-                                  ? "Choose a conversation"
-                                  : "All joined conversations",
-                            },
-                            ...workspace.rooms
-                              .filter(
-                                (r) =>
-                                  r.joined &&
-                                  r.members.some((p) => p.id === botId),
-                              )
-                              .map((r) => ({
-                                value: r.id,
-                                label:
-                                  r.name ||
-                                  r.members.map((p) => p.name).join(", "),
-                              })),
-                          ]}
-                        />
-                      </Field>
-                    </div>
-                    <Button
-                      disabled={
-                        busy || !botId || (kind === "webhook" && roomId === "*")
-                      }
-                    >
-                      Create credential
-                    </Button>
-                  </FieldGroup>
-                </form>
-                {credential && (
-                  <>
-                    {secretField(credential, "New credential")}
-                    <p className="text-xs text-muted-foreground">
-                      Shown once. Keep it private.
-                    </p>
-                  </>
-                )}
-              </>
-            )}
-            {tokens.length > 0 && (
-              <>
-                <Separator />
-                <div className="settings-member-list">
-                  {tokens.map((t) => (
-                    <div key={t.id} className="person-row">
-                      <div>
-                        <strong>
-                          {bots.find((p) => p.id === t.bot_id)?.name || "Bot"}
-                        </strong>
-                        <span>
-                          {t.kind === "webhook" ? "Webhook" : "API token"}
-                          {t.room_id
-                            ? " · " +
-                              (workspace.rooms.find((r) => r.id === t.room_id)
-                                ?.name || "Conversation")
-                            : ""}
-                        </span>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        disabled={busy}
-                        onClick={() =>
-                          void act(() =>
-                            api("/chat/tokens/" + t.id, { method: "DELETE" }),
-                          )
-                        }
-                      >
-                        Revoke
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-            <a
-              className="text-xs underline"
-              href="https://github.com/adayinthepark/melancholy/blob/main/docs/bot-api.md"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Bot API documentation
-            </a>
-            <a className="text-xs text-muted-foreground" href="/legacy">
-              Earlier agent conversations
-            </a>
-          </div>
-        )}
+              </div>
+            </>
+          )}
+          <a
+            className="text-xs underline"
+            href="https://github.com/adayinthepark/melancholy/blob/main/docs/bot-api.md"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Bot API documentation
+          </a>
+          <a className="text-xs text-muted-foreground" href="/legacy">
+            Earlier agent conversations
+          </a>
+        </div>
+      )}
+    </>
+  );
+  if (embedded) return content;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="team-settings sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Profile settings</DialogTitle>
+          <DialogDescription className="sr-only">
+            Your avatar, name, username and password.
+          </DialogDescription>
+        </DialogHeader>
+        {content}
       </DialogContent>
     </Dialog>
   );

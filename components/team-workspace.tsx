@@ -64,7 +64,6 @@ import {
 } from "@/components/ui/empty";
 import { api, post, ApiError } from "@/lib/client";
 import type { Room, TeamWorkspace, TeamMessage, MessagePage } from "@/lib/chat";
-import type { Server, Workspace } from "@/lib/protocol";
 import { PersonAvatar } from "./person-avatar";
 import { ThreadControls } from "./thread-controls";
 import { UsageDialog } from "./usage-dialog";
@@ -75,7 +74,6 @@ import { Login } from "./login";
 import { ChatTimeline } from "./chat-timeline";
 import { ChatComposer } from "./chat-composer";
 import { TeamSettings, Choice } from "./team-settings";
-import { ServerSettings } from "./server-settings";
 const emptyPage: MessagePage = { messages: [], hasMore: false, latest: 0 };
 export function roomName(room: Room, me: string) {
   return (
@@ -117,9 +115,7 @@ export function TeamWorkspaceApp({
   const [mobile, setMobile] = useState(false),
     [dark, setDark] = useState(false),
     [connection, setConnection] = useState("connecting"),
-    [settings, setSettings] = useState(false),
-    [serversOpen, setServersOpen] = useState(false),
-    [servers, setServers] = useState<Server[]>([]);
+    [settings, setSettings] = useState(false);
   const [create, setCreate] = useState<"channel" | "message" | null>(null),
     [name, setName] = useState(""),
     [topic, setTopic] = useState(""),
@@ -423,11 +419,7 @@ export function TeamWorkspaceApp({
       toast.error((e as Error).message);
     }
   }
-  async function loadServers() {
-    const w = await api<Workspace>("/workspace");
-    setServers(w.servers);
-    await refresh();
-  }
+
   function startCreate(kind: "channel" | "message") {
     setCreate(kind);
     setName("");
@@ -643,7 +635,7 @@ export function TeamWorkspaceApp({
         <button
           onClick={() => setSettings(true)}
           className="team-profile"
-          aria-label="Workspace settings"
+          aria-label="Profile settings"
         >
           <PersonAvatar person={me} />
           <span>{me.name}</span>
@@ -658,8 +650,16 @@ export function TeamWorkspaceApp({
             <DropdownMenuGroup>
               <DropdownMenuItem onClick={() => setSettings(true)}>
                 <Settings2 />
-                Settings
+                Profile settings
               </DropdownMenuItem>
+              {me.role === "owner" && (
+                <DropdownMenuItem asChild>
+                  <a href="/settings/workspace">
+                    <Settings2 />
+                    Workspace settings
+                  </a>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={() =>
                   void post("/logout").then(() => {
@@ -1320,21 +1320,7 @@ export function TeamWorkspaceApp({
         onOpenChange={setSettings}
         workspace={workspace}
         onChange={refresh}
-        onServers={() => {
-          setSettings(false);
-          void loadServers()
-            .then(() => setServersOpen(true))
-            .catch((e) => toast.error(e.message));
-        }}
       />
-      {admin && (
-        <ServerSettings
-          open={serversOpen}
-          onOpenChange={setServersOpen}
-          servers={servers}
-          onChange={loadServers}
-        />
-      )}
     </div>
   );
 }

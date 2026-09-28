@@ -1,6 +1,9 @@
 export type Connection = {
   id: string;
-  provider: "github" | "cloudflare";
+  provider:
+    "github" | "cloudflare" | import("./credentials").CredentialProvider;
+  env_keys?: string;
+  updated_at?: number;
   name: string;
   identity: string;
   account_id?: string | null;

@@ -80,7 +80,7 @@ test("profile, Inter, named mentions, server rename and focused thread work acro
   try {
     await page.goto("/?room=" + id);
     await page
-      .getByRole("button", { name: "Workspace settings", exact: true })
+      .getByRole("button", { name: "Profile settings", exact: true })
       .click();
     await page.getByLabel("Your username").fill(newHandle);
     await page
@@ -164,13 +164,7 @@ test("profile, Inter, named mentions, server rename and focused thread work acro
     await page
       .getByRole("link", { name: "Back to channel", exact: true })
       .click();
-    await page
-      .getByRole("button", { name: "Workspace settings", exact: true })
-      .click();
-    await page.getByRole("tab", { name: "Integrations", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Connect an agent server", exact: true })
-      .click();
+    await page.goto("/settings/workspace/servers");
     await page
       .getByRole("button", { name: "Rename " + agentName, exact: true })
       .click();

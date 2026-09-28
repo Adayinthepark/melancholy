@@ -54,3 +54,14 @@ in server settings and documentation. Empty screens offer the next action.
 
 Use shadcn primitives for focus, dialogs, menus, forms and message scrolling.
 Verify actual screenshots in both themes and at a phone width before release.
+
+## Settings
+
+Profile settings opens from the account menu and contains avatar, display name,
+username and password. Workspace settings has its own `/settings/workspace`
+page and a narrow navigation column: General/Members, Integrations & credentials,
+Bot & Agent, Usage. The content is left aligned with forms and simple divided
+rows. Credential creation and replacement use focused dialogs; values are never
+shown after saving. On phones the category navigation scrolls horizontally.
+The sidebar brand row starts at the top edge, aligned with the channel header,
+without an extra top padding band.

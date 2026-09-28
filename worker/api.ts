@@ -1,3 +1,4 @@
+import { workspaceInfo } from "./workspace-settings";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 import { jobEnvironment } from "./integrations";
@@ -325,7 +326,7 @@ async function route(request: Request): Promise<Response> {
       })),
     );
     return json({
-      name: env.WORKSPACE_NAME,
+      ...(await workspaceInfo()),
       channels: channels.results,
       threads: threads.results,
       servers,

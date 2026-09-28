@@ -141,14 +141,17 @@ the HTTP acknowledgement; inbox invalidation and agent dispatch use `waitUntil`.
 The existing minute recovery job retries durable agent requests after interruption.
 Pending drafts are memory-only; reloading discards an unsent draft.
 
-GitHub/Cloudflare tokens are encrypted with AES-GCM, random 96-bit IVs and the
+Provider tokens and custom credential bundles are encrypted with AES-GCM, random 96-bit IVs and the
 connection ID as authenticated context. `INTEGRATIONS_KEY` is a dedicated Worker
 secret. Only the owner can manage connections, link repositories, approve bot
 proposals and enable agent credentials per channel. Enabling one connection
 of a provider disables other connections of that provider for agent use in
 that channel. Human channel members can edit Issues through a linked repository;
 this delegates the owner's connected GitHub permissions to that conversation.
-Tokens are never returned by browser APIs.
+Tokens are never returned by browser APIs. LLM/custom bundles use additive
+`credentials` and `room_credentials` tables; existing repository integration
+records and their foreign keys are preserved. Conflicting variable names fail
+closed during both grant creation and task environment assembly.
 
 A connector can fetch credentials only for a run on its server that is queued
 or running. Each fetch rechecks bot membership and current channel grants.

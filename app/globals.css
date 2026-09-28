@@ -1034,7 +1034,7 @@
 .team-sidebar {
   width: 236px;
   flex-shrink: 0;
-  padding: 26px 12px 12px;
+  padding: 0 12px 12px;
   display: flex;
   flex-direction: column;
   background: var(--sidebar);
@@ -1690,7 +1690,7 @@
 }
 .team-mobile-nav {
   background: var(--sidebar);
-  padding: 28px 13px 14px !important;
+  padding: 0 13px 14px !important;
   width: 270px !important;
   gap: 0 !important;
 }
@@ -1848,8 +1848,9 @@
 .team-sidebar .workspace-brand,
 .team-mobile-nav .workspace-brand {
   font-size: 15px;
-  padding: 20px 10px;
-  margin-bottom: 5px;
+  padding: 0 10px;
+  min-height: 56px;
+  margin-bottom: 12px;
 }
 .mention-name {
   background: var(--accent);
@@ -2116,5 +2117,246 @@
   }
   .channel-workbench {
     max-width: calc(100% - 20px);
+  }
+}
+
+.team-mobile-nav .workspace-brand {
+  padding-right: 28px;
+}
+
+/* Workspace administration has its own address and navigation. */
+.workspace-settings-page {
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+}
+.workspace-settings-nav {
+  width: 236px;
+  flex-shrink: 0;
+  padding: 0 12px 12px;
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.workspace-settings-nav .workspace-brand {
+  min-height: 56px;
+  padding: 0 10px;
+}
+.settings-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.settings-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 22px;
+}
+.settings-nav-group > span {
+  color: var(--muted-foreground);
+  padding: 0 10px 6px;
+  font-size: 12px;
+}
+.settings-nav-group a {
+  font-size: 13px;
+  padding: 7px 10px;
+  border-radius: 5px;
+}
+.settings-nav-group a:hover,
+.settings-nav-group a[aria-current="page"] {
+  background: var(--accent);
+}
+.settings-nav-group a[aria-current="page"] {
+  font-weight: 500;
+}
+.settings-profile-link {
+  margin-top: auto;
+  justify-content: flex-start;
+}
+.workspace-settings-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+.workspace-settings-main > header {
+  height: 56px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.workspace-settings-content {
+  max-width: 980px;
+  padding: 36px 40px 64px;
+}
+.workspace-settings-content h1 {
+  font-size: 23px;
+  font-weight: 500;
+  letter-spacing: -0.6px;
+}
+.settings-intro {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 8px 0 30px;
+}
+.workspace-general-form {
+  max-width: 520px;
+}
+.settings-section-toolbar {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-section-toolbar p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  max-width: 52ch;
+  line-height: 1.6;
+}
+.settings-section-toolbar button {
+  flex-shrink: 0;
+}
+.settings-empty {
+  padding: 24px 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.credential-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border);
+}
+.credential-description {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.credential-description strong {
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.credential-description span,
+.credential-description small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.credential-actions {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.credential-dialog {
+  max-height: 85dvh;
+  overflow-y: auto;
+}
+.credential-field {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+.credential-grant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+}
+.credential-grant span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.settings-loading {
+  display: flex;
+  min-height: 100dvh;
+  padding: 40px;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  gap: 16px;
+}
+.workspace-settings-content .server-row {
+  flex-wrap: wrap;
+}
+.workspace-settings-content .server-description {
+  min-width: 150px;
+}
+.workspace-settings-content .server-description code {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .workspace-settings-page {
+    display: block;
+    overflow-y: auto;
+  }
+  .workspace-settings-nav {
+    width: 100%;
+    padding: 0 12px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    overflow: visible;
+  }
+  .workspace-settings-nav .workspace-brand {
+    max-width: 270px;
+  }
+  .workspace-settings-nav nav {
+    display: flex;
+    overflow-x: auto;
+    gap: 18px;
+    padding: 8px 0;
+  }
+  .settings-nav-group {
+    flex-direction: row;
+    align-items: center;
+    margin: 0;
+    gap: 2px;
+  }
+  .settings-nav-group > span {
+    display: none;
+  }
+  .settings-nav-group a {
+    white-space: nowrap;
+  }
+  .settings-profile-link {
+    align-self: flex-start;
+  }
+  .workspace-settings-main {
+    overflow: visible;
+  }
+  .workspace-settings-main > header {
+    padding: 0 20px;
+  }
+  .workspace-settings-content {
+    padding: 24px 20px 48px;
+  }
+  .settings-section-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .credential-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .workspace-settings-content .usage-table {
+    max-width: 100%;
   }
 }

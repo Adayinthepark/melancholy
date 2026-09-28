@@ -1,3 +1,4 @@
+import { safeCredentialName } from "./environment-policy.mjs";
 const allowed = new Set([
   "GH_TOKEN",
   "GITHUB_TOKEN",
@@ -22,7 +23,12 @@ export function agentEnvironment(inherited, approved) {
   ])
     delete result[name];
   for (const [name, value] of Object.entries(approved || {})) {
-    if (allowed.has(name) && typeof value === "string") result[name] = value;
+    if (
+      (allowed.has(name) || safeCredentialName(name)) &&
+      typeof value === "string" &&
+      !value.includes("\0")
+    )
+      result[name] = value;
   }
   return result;
 }
@@ -30,9 +36,18 @@ export function redactor(environment) {
   const secrets = Object.entries(environment || {})
     .filter(
       ([name, value]) =>
-        /TOKEN$/.test(name) && typeof value === "string" && value.length >= 10,
+        ((allowed.has(name) && /TOKEN$/.test(name)) ||
+          safeCredentialName(name)) &&
+        typeof value === "string" &&
+        value.length >= 1,
     )
-    .map(([, v]) => v);
+    .flatMap(([, v]) => [
+      v,
+      ...v
+        .split(/\r?\n/)
+        .filter((line) => line.length >= 4 && !/^-----/.test(line)),
+    ])
+    .sort((a, b) => b.length - a.length);
   function redact(value) {
     if (typeof value === "string") {
       for (const secret of secrets)
@@ -42,7 +57,12 @@ export function redactor(environment) {
     if (Array.isArray(value)) return value.map(redact);
     if (value && typeof value === "object")
       return Object.fromEntries(
-        Object.entries(value).map(([k, v]) => [k, redact(v)]),
+        Object.entries(value).map(([k, v]) => [
+          k,
+          ["type", "status", "id", "sessionId", "runtime", "model"].includes(k)
+            ? v
+            : redact(v),
+        ]),
       );
     return value;
   }

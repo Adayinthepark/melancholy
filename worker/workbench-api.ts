@@ -1,3 +1,10 @@
+import { workspaceInfo } from "./workspace-settings";
+import { credentialProviders } from "../lib/credentials";
+import {
+  credentialColumns,
+  saveCredential,
+  grantCredential,
+} from "./credential-store";
 import { env, waitUntil } from "cloudflare:workers";
 import { z } from "zod";
 import { ChatError, requireRoom, type Identity } from "./team-auth";
@@ -34,6 +41,24 @@ export async function workbench(
 ): Promise<Response | null> {
   const method = request.method,
     url = new URL(request.url);
+  if (path === "/api/chat/settings") {
+    admin(who);
+    if (method === "GET") return json(await workspaceInfo());
+    if (method === "PATCH") {
+      const input = z
+        .object({
+          name: z.string().trim().min(1).max(60),
+          description: z.string().trim().max(500).default(""),
+        })
+        .parse(await body(request));
+      await env.DB.prepare(
+        "INSERT INTO workspace_settings VALUES ('workspace',?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,updated_at=excluded.updated_at",
+      )
+        .bind(input.name, input.description, Date.now())
+        .run();
+      return json(input);
+    }
+  }
   if (path === "/api/chat/avatar" && ["POST", "DELETE"].includes(method)) {
     human(who);
     let avatar: string | null = null;
@@ -172,13 +197,26 @@ export async function workbench(
     admin(who);
     if (method === "GET")
       return json({
-        connections: (
-          await env.DB.prepare(
-            "SELECT id,provider,name,identity,account_id,created_at FROM integrations ORDER BY created_at",
-          ).all()
-        ).results,
+        connections: [
+          ...(
+            await env.DB.prepare(
+              "SELECT id,provider,name,identity,account_id,created_at FROM integrations ORDER BY created_at",
+            ).all()
+          ).results,
+          ...(
+            await env.DB.prepare(
+              `SELECT ${credentialColumns} FROM credentials ORDER BY created_at`,
+            ).all()
+          ).results,
+        ],
       });
     if (method === "POST") {
+      const data = z
+        .object({ provider: z.string() })
+        .passthrough()
+        .parse(await body(request));
+      if (credentialProviders.some((p) => p === data.provider))
+        return json(await saveCredential(data, who.id), 201);
       const input = z
         .object({
           provider: z.enum(["github", "cloudflare"]),
@@ -189,7 +227,7 @@ export async function workbench(
             .regex(/^[a-f0-9]{32}$/)
             .optional(),
         })
-        .parse(await body(request));
+        .parse(data);
       let identity: string;
       if (input.provider === "github") {
         const user = (await providerRequest(
@@ -228,8 +266,70 @@ export async function workbench(
     }
   }
   const conn = path.match(/^\/api\/chat\/connections\/([^/]+)$/);
+  if (conn && method === "PUT") {
+    admin(who);
+    const data = z
+      .object({ provider: z.string() })
+      .passthrough()
+      .parse(await body(request));
+    if (credentialProviders.some((p) => p === data.provider))
+      return json(await saveCredential(data, who.id, conn[1]));
+    const current = await connection(conn[1]);
+    const input = z
+      .object({
+        name: z.string().trim().min(1).max(60),
+        token: z.string().trim().min(10).max(4096),
+        accountId: z
+          .string()
+          .regex(/^[a-f0-9]{32}$/)
+          .optional(),
+      })
+      .parse(data);
+    if (data.provider !== current.provider)
+      throw new ChatError(
+        400,
+        "Keep the same provider when replacing a credential.",
+      );
+    let identity = current.identity;
+    if (current.provider === "github")
+      identity = (
+        (await providerRequest("github", input.token, "/user")) as {
+          login: string;
+        }
+      ).login;
+    else {
+      const result = (await providerRequest(
+        "cloudflare",
+        input.token,
+        "/user/tokens/verify",
+      )) as { success: boolean; result: { status: string } };
+      if (!result.success || result.result.status !== "active")
+        throw new ChatError(400, "This Cloudflare token is not active.");
+      identity = input.accountId || "API token";
+    }
+    await env.DB.prepare(
+      "UPDATE integrations SET name=?,identity=?,secret=?,account_id=? WHERE id=?",
+    )
+      .bind(
+        input.name,
+        identity,
+        await seal(input.token, conn[1]),
+        input.accountId || null,
+        conn[1],
+      )
+      .run();
+    return json({
+      id: conn[1],
+      name: input.name,
+      provider: current.provider,
+      identity,
+    });
+  }
   if (conn && method === "DELETE") {
     admin(who);
+    await env.DB.prepare("DELETE FROM credentials WHERE id=?")
+      .bind(conn[1])
+      .run();
     await env.DB.prepare("DELETE FROM integrations WHERE id=?")
       .bind(conn[1])
       .run();
@@ -245,9 +345,9 @@ export async function workbench(
       return json({
         connections: (
           await env.DB.prepare(
-            "SELECT i.id,i.name,i.provider,i.identity,r.agent_enabled FROM integrations i JOIN room_integrations r ON r.integration_id=i.id WHERE r.room_id=?",
+            "SELECT i.id,i.name,i.provider,i.identity,r.agent_enabled,NULL AS env_keys FROM integrations i JOIN room_integrations r ON r.integration_id=i.id WHERE r.room_id=? UNION ALL SELECT c.id,c.name,c.provider,c.identity,r.agent_enabled,c.env_keys FROM credentials c JOIN room_credentials r ON r.credential_id=c.id WHERE r.room_id=?",
           )
-            .bind(ri[1])
+            .bind(ri[1], ri[1])
             .all()
         ).results,
       });
@@ -255,10 +355,12 @@ export async function workbench(
     admin(who);
     await requireRoom(ri[1], who, true);
     if (method === "PUT" && ri[2]) {
-      const c = await connection(ri[2]);
       const input = z
         .object({ agentEnabled: z.boolean() })
         .parse(await body(request));
+      if (await grantCredential(ri[1], ri[2], input.agentEnabled))
+        return json({ ok: true });
+      const c = await connection(ri[2]);
       await env.DB.batch([
         ...(input.agentEnabled
           ? [
@@ -274,6 +376,11 @@ export async function workbench(
       return json({ ok: true });
     }
     if (method === "DELETE" && ri[2]) {
+      await env.DB.prepare(
+        "DELETE FROM room_credentials WHERE room_id=? AND credential_id=?",
+      )
+        .bind(ri[1], ri[2])
+        .run();
       await env.DB.prepare(
         "DELETE FROM room_integrations WHERE room_id=? AND integration_id=?",
       )

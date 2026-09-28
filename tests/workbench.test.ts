@@ -613,3 +613,237 @@ describe("thread automation and accounting", () => {
     expect(((await empty.json()) as { rows: unknown[] }).rows).toEqual([]);
   });
 });
+
+describe("workspace administration and credential vault", () => {
+  it("restricts workspace changes to the owner and keeps the workspace name across APIs", async () => {
+    const owner = await login(),
+      m = await member(owner),
+      before = await workspace(owner);
+    expect((await request("/api/chat/settings", m.cookie)).status).toBe(403);
+    expect(
+      (
+        await request("/api/chat/settings", m.cookie, "PATCH", {
+          name: "forbidden",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request("/api/chat/settings", owner, "PATCH", {
+          name: "Project studio",
+          description: "A private workspace",
+        })
+      ).status,
+    ).toBe(200);
+    expect(await workspace(owner)).toMatchObject({
+      name: "Project studio",
+      description: "A private workspace",
+    });
+    expect(await (await request("/api/workspace", owner)).json()).toMatchObject(
+      { name: "Project studio" },
+    );
+    await request("/api/chat/settings", owner, "PATCH", {
+      name: before.name,
+      description: before.description || "",
+    });
+  });
+  it("encrypts multiline credentials, exposes metadata only, and protects record replacement", async () => {
+    const owner = await login(),
+      m = await member(owner);
+    const data = {
+      provider: "custom",
+      name: "App Store team",
+      fields: [
+        {
+          name: "ASC_PRIVATE_KEY",
+          value:
+            "-----BEGIN PRIVATE KEY-----\nprivate-value\n-----END PRIVATE KEY-----",
+        },
+        { name: "ASC_KEY_ID", value: "team-key" },
+      ],
+    };
+    expect(
+      (await request("/api/chat/connections", m.cookie, "POST", data)).status,
+    ).toBe(403);
+    const created = await request("/api/chat/connections", owner, "POST", data);
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const row = await env.DB.prepare("SELECT * FROM credentials WHERE id=?")
+      .bind(id)
+      .first<{ id: string; secret: string }>();
+    expect(row!.secret).not.toContain("private-value");
+    expect(JSON.parse(await unseal(row!))).toMatchObject({
+      ASC_PRIVATE_KEY: data.fields[0].value,
+    });
+    await expect(unseal({ ...row!, id: "wrong-record" })).rejects.toThrow();
+    const listing = await (
+      await request("/api/chat/connections", owner)
+    ).text();
+    expect(listing).not.toContain("private-value");
+    expect(listing).not.toContain("team-key");
+    expect(
+      (await request("/api/chat/connections/" + id, m.cookie, "PUT", data))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await request("/api/chat/connections/" + id, owner, "PUT", {
+          ...data,
+          fields: [{ name: "OTHER_SECRET", value: "new" }],
+        })
+      ).status,
+    ).toBe(400);
+    const updated = {
+      ...data,
+      fields: data.fields.map((f) => ({
+        ...f,
+        value: "replacement-" + f.name,
+      })),
+    };
+    expect(
+      (await request("/api/chat/connections/" + id, owner, "PUT", updated))
+        .status,
+    ).toBe(200);
+    const next = await env.DB.prepare("SELECT * FROM credentials WHERE id=?")
+      .bind(id)
+      .first<{ id: string; secret: string }>();
+    expect(JSON.parse(await unseal(next!))).toMatchObject({
+      ASC_PRIVATE_KEY: "replacement-ASC_PRIVATE_KEY",
+    });
+    expect(
+      (await request("/api/chat/connections/" + id, m.cookie, "DELETE")).status,
+    ).toBe(403);
+    await request("/api/chat/connections/" + id, owner, "DELETE");
+    expect(
+      await env.DB.prepare("SELECT 1 FROM credentials WHERE id=?")
+        .bind(id)
+        .first(),
+    ).toBeNull();
+  });
+  it("validates provider endpoints and rejects process configuration masquerading as credentials", async () => {
+    const owner = await login();
+    for (const name of [
+      "NODE_OPTIONS",
+      "LD_PRELOAD",
+      "GITHUB_TOKEN",
+      "MELANCHOLY_API_TOKEN",
+      "HOME",
+      "LARK_APP_SECRET",
+    ]) {
+      expect(
+        (
+          await request("/api/chat/connections", owner, "POST", {
+            provider: "custom",
+            name: "invalid",
+            fields: [{ name, value: "secret" }],
+          })
+        ).status,
+      ).toBe(400);
+    }
+    for (const base of [
+      "http://example.test/v1",
+      "https://user:password@example.test",
+      "https://example.test?token=secret",
+    ]) {
+      expect(
+        (
+          await request("/api/chat/connections", owner, "POST", {
+            provider: "openai",
+            name: "endpoint",
+            fields: [
+              { name: "OPENAI_API_KEY", value: "private-key" },
+              { name: "OPENAI_BASE_URL", value: base },
+            ],
+          })
+        ).status,
+      ).toBe(400);
+    }
+    expect(
+      (
+        await request("/api/chat/connections", owner, "POST", {
+          provider: "anthropic",
+          name: "wrong fields",
+          fields: [{ name: "OPENAI_API_KEY", value: "secret" }],
+        })
+      ).status,
+    ).toBe(400);
+  });
+  it("injects only active channel grants, rejects conflicts and removes revoked credentials", async () => {
+    const owner = await login(),
+      outside = await member(owner),
+      { id, server } = await agentSetup(owner);
+    const data = {
+      provider: "openai",
+      name: "Model key",
+      fields: [
+        { name: "OPENAI_API_KEY", value: "approved-llm-key" },
+        { name: "OPENAI_BASE_URL", value: "https://api.example.test/v1" },
+      ],
+    };
+    const first = (await (
+      await request("/api/chat/connections", owner, "POST", data)
+    ).json()) as { id: string };
+    const second = (await (
+      await request("/api/chat/connections", owner, "POST", data)
+    ).json()) as { id: string };
+    const path = `/api/chat/rooms/${id}/connections/${first.id}`;
+    expect(
+      (await request(path, outside.cookie, "PUT", { agentEnabled: true }))
+        .status,
+    ).toBe(404);
+    const job = await running(owner, id, server.id);
+    expect(
+      (await jobEnvironment(server.id, job.threadId, job.run.id))
+        .OPENAI_API_KEY,
+    ).toBeUndefined();
+    expect(
+      (await request(path, owner, "PUT", { agentEnabled: true })).status,
+    ).toBe(200);
+    expect(
+      await jobEnvironment(server.id, job.threadId, job.run.id),
+    ).toMatchObject({
+      OPENAI_API_KEY: "approved-llm-key",
+      OPENAI_BASE_URL: "https://api.example.test/v1",
+    });
+    expect(
+      (
+        await request(
+          `/api/chat/rooms/${id}/connections/${second.id}`,
+          owner,
+          "PUT",
+          { agentEnabled: true },
+        )
+      ).status,
+    ).toBe(409);
+    const list = await (
+      await request(`/api/chat/rooms/${id}/connections`, owner)
+    ).text();
+    expect(list).not.toContain("approved-llm-key");
+    await request("/api/chat/connections/" + first.id, owner, "PUT", {
+      ...data,
+      fields: data.fields.map((f) =>
+        f.name === "OPENAI_API_KEY" ? { ...f, value: "rotated-key" } : f,
+      ),
+    });
+    expect(
+      (await jobEnvironment(server.id, job.threadId, job.run.id))
+        .OPENAI_API_KEY,
+    ).toBe("rotated-key");
+    await request("/api/chat/connections/" + first.id, owner, "DELETE");
+    expect(
+      (await jobEnvironment(server.id, job.threadId, job.run.id))
+        .OPENAI_API_KEY,
+    ).toBeUndefined();
+    expect(
+      await env.DB.prepare(
+        "SELECT 1 FROM room_credentials WHERE credential_id=?",
+      )
+        .bind(first.id)
+        .first(),
+    ).toBeNull();
+    await job.agent.cancel();
+    await expect(
+      jobEnvironment(server.id, job.threadId, job.run.id),
+    ).rejects.toThrow("not active");
+  });
+});

@@ -1,6 +1,6 @@
 # Connections and Issues
 
-1. Open **Settings → Connections**. Add a GitHub personal access token or a
+1. Open **Workspace settings → GitHub / Cloudflare**. Add a GitHub personal access token or a
    Cloudflare API token. Tokens are checked before the encrypted record is saved.
 2. Open a channel's **Repositories and issues → Repositories & connections**.
    Link one or more GitHub repositories using `owner/repository`.
@@ -59,8 +59,7 @@ Use the explicitly enabled `GH_TOKEN` for coding and Issue changes from the CLI.
 
 ## Usage
 
-Open the usage button on a channel, thread or server. **Settings → Integrations
-→ Workspace token usage** shows global totals. Input includes cached tokens;
+Open the usage button on a channel, thread or server. **Workspace settings → Usage** shows global totals. Input includes cached tokens;
 cached input is not added twice. Reports are attributed to the server, channel
 and thread that executed the turn, even if names change later.
 
@@ -68,3 +67,60 @@ Only CLI-reported usage after upgrading the Worker and connector is recorded.
 A cancelled or failed CLI may not emit usage; older runs are not backfilled.
 Codex often does not report its model name in the JSON usage event, so the UI
 shows the runtime instead. Provider billing remains authoritative.
+
+## LLM keys and custom credentials
+
+Workspace administration lives at `/settings/workspace`. Its navigation includes
+General, Members, Cloudflare, GitHub, LLM keys, Custom credentials, Servers, Bots,
+and Usage. The account menu opens Profile settings separately. Workspace settings
+are owner-only; changes to the workspace name persist in D1.
+
+Under **LLM keys**, add an OpenAI compatible, Anthropic compatible, DeepSeek,
+Kimi or GLM key. Compatible providers accept an HTTPS API base URL. This saves
+credentials without making a paid inference call or claiming the key was verified.
+The provider presets export:
+
+| Provider             | Environment variables                     |
+| -------------------- | ----------------------------------------- |
+| OpenAI compatible    | `OPENAI_API_KEY`, `OPENAI_BASE_URL`       |
+| Anthropic compatible | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` |
+| DeepSeek             | `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`   |
+| Kimi                 | `MOONSHOT_API_KEY`, `MOONSHOT_BASE_URL`   |
+| GLM                  | `ZHIPU_API_KEY`, `ZHIPU_BASE_URL`         |
+
+The connector passes these values to the active CLI child. It does not change
+the CLI model configuration or switch an existing subscription to API billing.
+For another service using an OpenAI/Anthropic protocol, choose the compatible
+preset and its endpoint, then configure the agent on the server accordingly.
+
+**Custom credentials** stores up to 20 named values per entry. Multiline content
+is preserved; a private-key file up to 16 KB can populate a field. The App Store
+Connect template uses `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_PRIVATE_KEY`. These
+are values for the agent to use; the application does not mint Apple JWTs itself.
+Names must be service-prefixed and end in `_KEY`, `_TOKEN`, `_SECRET`, `_PASSWORD`,
+`_ID`, `_URL`, `_JSON` or `_CERTIFICATE`. Process configuration and bridge variables
+are reserved and cannot be overridden through this form.
+
+Use **Channel access** on a credential, or a channel's repository settings, to
+enable it for a conversation. Being saved alone never grants an agent access.
+Conflicting variable names are rejected; disable the older grant first. Replacing
+values retains current grants and requires the same provider and variable names.
+Removing a credential deletes its grants. Running processes may already hold the
+old values; stop the task and revoke the upstream credential for immediate removal.
+
+## Storage
+
+Secret values are AES-256-GCM ciphertext in Cloudflare D1. A random IV and the
+record ID as authenticated data prevent ciphertext reuse between records. The
+separate encryption root is `INTEGRATIONS_KEY`, held in **Workers Secrets**. It
+is not in D1, browser responses or source control. Back it up separately and do
+not replace it without migrating existing ciphertext. Metadata APIs never return
+secret values, even to the owner. Replacement is write-only.
+
+Cloudflare Secrets Store currently binds each named secret to a Worker at
+configuration time and limits its beta to 100 secrets per account. D1 ciphertext
+with a Workers Secret root lets workspace credentials be added and revoked at
+runtime without deploying new bindings or giving the application an account-wide
+Secrets Store management token. See [Workers Secrets](https://developers.cloudflare.com/workers/configuration/secrets/),
+[Secrets Store bindings](https://developers.cloudflare.com/secrets-store/integrations/workers/)
+and [current limits](https://developers.cloudflare.com/secrets-store/manage-secrets/).

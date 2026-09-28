@@ -4,7 +4,7 @@ Connect an existing Codex or Claude Code installation to a melancholy workspace.
 Node.js 22 or newer is required. The connector opens an outbound WebSocket;
 no public port or reverse proxy is needed on the server.
 
-In the workspace, open **Settings → Connect server**, name the machine, and
+In the workspace, open **Workspace settings → Servers**, name the machine, and
 choose the runtime. Save the generated configuration as `melancholy.json` on
 the server, outside your source repository. Set `cwd` to the project directory.
 
@@ -91,9 +91,9 @@ server in workspace settings revokes its token and closes its connection.
 
 ## Channel credentials and usage
 
-Use the connector from the same release as the Worker. Version 0.3 fetches
+Use the connector from the same release as the Worker. Version 0.3 and later fetch
 `/api/connector/environment` before spawning each task and fails explicitly if
-that authenticated request fails. Enable GitHub/Cloudflare connections in the
+that authenticated request fails. Enable service credentials in the
 channel's repository settings. The child receives `GH_TOKEN`, `GITHUB_TOKEN`,
 `CLOUDFLARE_API_TOKEN` and, when configured, `CLOUDFLARE_ACCOUNT_ID`.
 These provider variables are removed from the inherited environment first.
@@ -115,3 +115,13 @@ Codex and Claude usage reports are sent as absolute per-run counters. Missing
 usage stays unreported; the connector does not estimate tokens from text.
 Claude usage and multi-model result handling are covered by fixtures; a live
 Claude installation is still required to validate a particular CLI version.
+
+Version 0.4 supports LLM and custom credentials added under Workspace settings after
+upgrading and restarting the connector. The worker sends only active grants.
+The connector accepts service credential variable names and rejects process or
+bridge configuration overrides; `environment-policy.mjs` is shared with the
+Worker validator. Values apply only to the child environment, never `process.env`.
+Existing operator CLI authentication is retained unless the task explicitly
+provides that provider's key. Exact approved values are redacted from emitted
+text and tool events; transformed/encoded secret values are not guaranteed to
+be redacted. Use an isolated OS account when host credentials must be inaccessible.

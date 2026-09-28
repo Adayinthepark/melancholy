@@ -49,6 +49,7 @@ export type TeamMessage = {
 };
 export type TeamWorkspace = {
   name: string;
+  description?: string;
   me: Person;
   people: Person[];
   rooms: Room[];

@@ -1,3 +1,4 @@
+import { workspaceInfo } from "./workspace-settings";
 import { env, waitUntil } from "cloudflare:workers";
 import { z } from "zod";
 import { workbench } from "./workbench-api";
@@ -480,7 +481,7 @@ async function route(request: Request): Promise<Response> {
       listRooms(who),
     ]);
     return json({
-      name: env.WORKSPACE_NAME,
+      ...(await workspaceInfo()),
       me,
       people: people.results,
       rooms,

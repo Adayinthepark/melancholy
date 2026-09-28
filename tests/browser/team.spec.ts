@@ -226,11 +226,8 @@ test("owner creates a bot, scopes a webhook and revokes delivery", async ({
   const { id } = await room.json();
   await page.goto("/?room=" + id);
   async function settings() {
-    await page
-      .getByRole("button", { name: "Workspace menu", exact: true })
-      .click();
-    await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
-    await page.getByRole("tab", { name: "Integrations", exact: true }).click();
+    await page.goto("/settings/workspace/bots");
+    await page.getByLabel("Bot name", { exact: true }).waitFor();
   }
   await settings();
   await page.getByLabel("Bot name", { exact: true }).fill(botName);
@@ -239,7 +236,7 @@ test("owner creates a bot, scopes a webhook and revokes delivery", async ({
     .fill("release-" + suffix);
   await page.getByRole("button", { name: "Create bot", exact: true }).click();
   await expect(page.getByLabel("Bot name", { exact: true })).toHaveValue("");
-  await page.keyboard.press("Escape");
+  await page.goto("/?room=" + id);
   await page
     .getByRole("button", { name: "Conversation members", exact: true })
     .click();
@@ -254,6 +251,8 @@ test("owner creates a bot, scopes a webhook and revokes delivery", async ({
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await settings();
+  await page.getByLabel("Bot", { exact: true }).click();
+  await page.getByRole("option").filter({ hasText: botName }).click();
   await page.getByLabel("Credential", { exact: true }).click();
   await page
     .getByRole("option", { name: "Incoming webhook", exact: true })
@@ -267,7 +266,7 @@ test("owner creates a bot, scopes a webhook and revokes delivery", async ({
   await expect(credential).toBeVisible();
   const hook = await credential.inputValue();
   expect(hook).toContain("/api/hooks/");
-  await page.keyboard.press("Escape");
+  await page.goto("/?room=" + id);
   const delivery = await context.request.post(hook, {
     data: { text: "Release 1.0 is ready." },
   });
@@ -277,16 +276,15 @@ test("owner creates a bot, scopes a webhook and revokes delivery", async ({
   ).toContainText(botName);
   await settings();
   await page
-    .getByRole("dialog")
     .locator(".person-row")
     .filter({ hasText: botName })
     .getByRole("button", { name: "Revoke", exact: true })
     .click();
   await expect(
     page
-      .getByRole("dialog")
       .locator(".person-row")
-      .filter({ hasText: botName }),
+      .filter({ hasText: botName })
+      .getByRole("button", { name: "Revoke", exact: true }),
   ).toHaveCount(0);
   expect(
     (

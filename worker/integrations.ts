@@ -1,3 +1,6 @@
+import { unseal } from "./credential-crypto";
+export { seal, unseal } from "./credential-crypto";
+import { credentialEnvironment } from "./credential-store";
 import { env } from "cloudflare:workers";
 import { hash, secret } from "./auth";
 import { ChatError } from "./team-auth";
@@ -9,46 +12,6 @@ export type Integration = {
   account_id: string | null;
   secret: string;
 };
-async function key() {
-  const value = env.INTEGRATIONS_KEY;
-  if (!value || !/^[a-f0-9]{64}$/.test(value))
-    throw new ChatError(
-      503,
-      "Connections are not configured on this installation.",
-    );
-  return crypto.subtle.importKey(
-    "raw",
-    Uint8Array.from(value.match(/../g)!, (x) => parseInt(x, 16)),
-    "AES-GCM",
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
-export async function seal(token: string, id: string) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv, additionalData: new TextEncoder().encode(id) },
-    await key(),
-    new TextEncoder().encode(token),
-  );
-  return JSON.stringify({
-    iv: Array.from(iv),
-    data: Array.from(new Uint8Array(data)),
-  });
-}
-export async function unseal(record: Integration) {
-  const s = JSON.parse(record.secret);
-  const value = await crypto.subtle.decrypt(
-    {
-      name: "AES-GCM",
-      iv: new Uint8Array(s.iv),
-      additionalData: new TextEncoder().encode(record.id),
-    },
-    await key(),
-    new Uint8Array(s.data),
-  );
-  return new TextDecoder().decode(value);
-}
 export async function connection(id: string) {
   const row = await env.DB.prepare("SELECT * FROM integrations WHERE id=?")
     .bind(id)
@@ -146,7 +109,9 @@ export async function jobEnvironment(
   )
     .bind(mapping.room_id)
     .all<Integration>();
-  const result: Record<string, string> = {};
+  const result: Record<string, string> = await credentialEnvironment(
+    mapping.room_id,
+  );
   for (const c of rows.results) {
     const token = await unseal(c);
     if (c.provider === "github") {
@@ -204,6 +169,6 @@ export async function repositoryContext(roomId: string, rootId: string) {
       .map((r) => `Repository: ${r.full_name} (${r.url})`)
       .join("\n") +
     (issue ? "\nGitHub issue: " + issue.url : "") +
-    "\nApproved GitHub/Cloudflare credentials, when enabled for this channel, are provided in environment variables. Never print credentials. For workspace repository proposals, use MELANCHOLY_API_TOKEN with GET /api/v1/rooms/$MELANCHOLY_ROOM_ID/repositories or POST the same endpoint with {fullName,connectionId}; requests require owner approval. GET /api/v1/rooms/$MELANCHOLY_ROOM_ID/connections returns available connection IDs. This workspace token is scoped to this active task and cannot approve proposals. Use the connected repositories for this conversation; do not assume the current directory is the correct checkout."
+    "\nApproved service credentials, when enabled for this channel, are provided in environment variables. Never print credentials. For workspace repository proposals, use MELANCHOLY_API_TOKEN with GET /api/v1/rooms/$MELANCHOLY_ROOM_ID/repositories or POST the same endpoint with {fullName,connectionId}; requests require owner approval. GET /api/v1/rooms/$MELANCHOLY_ROOM_ID/connections returns available connection IDs. This workspace token is scoped to this active task and cannot approve proposals. Use the connected repositories for this conversation; do not assume the current directory is the correct checkout."
   );
 }

@@ -189,3 +189,49 @@ test("redaction covers tool events and failure details recursively", () => {
     },
   );
 });
+test("approved LLM and multiline signing keys reach only the task child and are redacted", () => {
+  const inherited = { PATH: "/usr/bin", OPENAI_API_KEY: "operator-cli-auth" };
+  const approved = {
+    OPENAI_API_KEY: "new-llm-key",
+    OPENAI_BASE_URL: "https://llm.test/v1",
+    ASC_PRIVATE_KEY:
+      "-----BEGIN PRIVATE KEY-----\nsecret-body\n-----END PRIVATE KEY-----",
+    ASC_KEY_ID: "key123",
+    NODE_OPTIONS: "--import=bad",
+    GIT_CONFIG_KEY: "evil",
+    MELANCHOLY_TOKEN: "connector-spoof",
+  };
+  const result = agentEnvironment(inherited, approved);
+  assert.equal(result.OPENAI_API_KEY, "new-llm-key");
+  assert.equal(result.ASC_PRIVATE_KEY, approved.ASC_PRIVATE_KEY);
+  assert.equal(result.ASC_KEY_ID, "key123");
+  assert.equal(result.NODE_OPTIONS, undefined);
+  assert.equal(result.GIT_CONFIG_KEY, undefined);
+  assert.equal(result.MELANCHOLY_TOKEN, undefined);
+  assert.equal(inherited.OPENAI_API_KEY, "operator-cli-auth");
+  const redact = redactor(approved);
+  assert.equal(
+    redact("output new-llm-key " + approved.ASC_PRIVATE_KEY + " key123"),
+    "output [redacted] [redacted] [redacted]",
+  );
+});
+
+test("multiline private key body lines are redacted in separate output events", () => {
+  const redact = redactor({
+    ASC_PRIVATE_KEY:
+      "-----BEGIN PRIVATE KEY-----\nbase64SigningMaterialLine\n-----END PRIVATE KEY-----",
+  });
+  assert.equal(
+    redact({ detail: "base64SigningMaterialLine" }).detail,
+    "[redacted]",
+  );
+});
+
+test("short credential values do not alter event protocol fields", () => {
+  const redact = redactor({ ASC_KEY_ID: "t" });
+  assert.deepEqual(redact({ type: "text", status: "started", text: "t" }), {
+    type: "text",
+    status: "started",
+    text: "[redacted]",
+  });
+});

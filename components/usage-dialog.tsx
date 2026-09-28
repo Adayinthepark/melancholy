@@ -30,7 +30,9 @@ export function UsageDialog({
   roomId,
   threadId,
   serverId,
+  embedded = false,
 }: {
+  embedded?: boolean;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   roomId?: string;
@@ -77,6 +79,74 @@ export function UsageDialog({
   }, [open, roomId, threadId, serverId]);
   const count = (key: "input_tokens" | "output_tokens" | "cached_tokens") =>
     totals[key].toLocaleString();
+  const content = (
+    <>
+      {error ? (
+        <p role="alert">{error}</p>
+      ) : loading ? (
+        <p>Loading…</p>
+      ) : (
+        <>
+          <div className="usage-totals">
+            <span>
+              <strong>{count("input_tokens")}</strong>Input
+            </span>
+            <span>
+              <strong>{count("output_tokens")}</strong>Output
+            </span>
+            <span>
+              <strong>{count("cached_tokens")}</strong>Cached input
+            </span>
+          </div>
+          {limited && (
+            <p className="text-xs text-muted-foreground">
+              Totals cover all recorded runs. Showing the 500 most recently
+              active groups.
+            </p>
+          )}
+          {rows.length ? (
+            <div className="usage-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Server / model</th>
+                    <th>Conversation</th>
+                    <th>Runs</th>
+                    <th>Input</th>
+                    <th>Output</th>
+                    <th>Cached</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={i}>
+                      <td>
+                        {r.server_name || "Removed server"}
+                        <small>{r.model || r.runtime}</small>
+                      </td>
+                      <td>
+                        {r.room_name || "Earlier conversation"}
+                        {r.root_id && r.root_id !== r.room_id && (
+                          <a href={"/thread/" + r.root_id}>Open thread</a>
+                        )}
+                      </td>
+                      <td>{r.runs}</td>
+                      <td>{r.input_tokens.toLocaleString()}</td>
+                      <td>{r.output_tokens.toLocaleString()}</td>
+                      <td>{r.cached_tokens.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p>No usage reported yet.</p>
+          )}
+        </>
+      )}
+    </>
+  );
+  if (embedded) return content;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="usage-dialog sm:max-w-3xl">
@@ -87,69 +157,7 @@ export function UsageDialog({
             runs without usage reports are excluded.
           </DialogDescription>
         </DialogHeader>
-        {error ? (
-          <p role="alert">{error}</p>
-        ) : loading ? (
-          <p>Loading…</p>
-        ) : (
-          <>
-            <div className="usage-totals">
-              <span>
-                <strong>{count("input_tokens")}</strong>Input
-              </span>
-              <span>
-                <strong>{count("output_tokens")}</strong>Output
-              </span>
-              <span>
-                <strong>{count("cached_tokens")}</strong>Cached input
-              </span>
-            </div>
-            {limited && (
-              <p className="text-xs text-muted-foreground">
-                Totals cover all recorded runs. Showing the 500 most recently
-                active groups.
-              </p>
-            )}
-            {rows.length ? (
-              <div className="usage-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Server / model</th>
-                      <th>Conversation</th>
-                      <th>Runs</th>
-                      <th>Input</th>
-                      <th>Output</th>
-                      <th>Cached</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r, i) => (
-                      <tr key={i}>
-                        <td>
-                          {r.server_name || "Removed server"}
-                          <small>{r.model || r.runtime}</small>
-                        </td>
-                        <td>
-                          {r.room_name || "Earlier conversation"}
-                          {r.root_id && r.root_id !== r.room_id && (
-                            <a href={"/thread/" + r.root_id}>Open thread</a>
-                          )}
-                        </td>
-                        <td>{r.runs}</td>
-                        <td>{r.input_tokens.toLocaleString()}</td>
-                        <td>{r.output_tokens.toLocaleString()}</td>
-                        <td>{r.cached_tokens.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p>No usage reported yet.</p>
-            )}
-          </>
-        )}
+        {content}
       </DialogContent>
     </Dialog>
   );

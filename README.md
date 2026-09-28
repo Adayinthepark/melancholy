@@ -19,7 +19,8 @@ workspace data stays in your Cloudflare account.
 - Bot identities, scoped API tokens, incoming webhooks and an event cursor API.
 - Codex and Claude Code connectors, explicit session resumption, execution logs
   and task cancellation.
-- GitHub/Cloudflare connections with channel-scoped agent credentials.
+- GitHub, Cloudflare, LLM provider and custom credentials with per-channel grants.
+- Separate profile settings and workspace administration pages.
 - Multiple repositories per channel; GitHub Issues, comments and work threads.
 - Per-thread auto trigger, focused thread pages and reported token usage.
 - Optimistic sending with retry; shadcn/ui, Inter and light/dark themes.
@@ -53,11 +54,11 @@ npm run dev
 ```
 
 Set a random `WORKSPACE_KEY` of at least 32 characters in `.dev.vars`. On the
-sign-in screen, choose **Use workspace key** for the owner account. In Settings,
+sign-in screen, choose **Use workspace key** for the owner account. In Profile settings,
 set a display name and password; the initial owner username is `owner`.
-Change it in **Settings → Profile** and upload a PNG, JPEG or WebP avatar.
+Change it in **Profile settings** and upload a PNG, JPEG or WebP avatar.
 
-Create a one-use invitation in **Settings → Members** for each teammate. The
+Create a one-use invitation in **Workspace settings → Members** for each teammate. The
 recipient chooses a username, display name and password. Invitations expire
 in seven days. Removing a member's access invalidates their browser sessions.
 
@@ -68,7 +69,7 @@ identity does not bypass these conversation checks in the shared workspace.
 
 ## Agents and bots
 
-In **Settings → Integrations → Connect an agent server**, create a server and
+In **Workspace settings → Servers**, create a server and
 follow the connector instructions. Add its bot through a channel's member
 settings, then `@mention` its username. In a direct message with that bot, each
 message starts an agent turn. Channel replies continue the CLI session for

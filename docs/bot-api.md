@@ -52,7 +52,8 @@ Upload first, then pass the returned file IDs in `attachments`. Files are
 limited to 10 MB each and eight per message. Draft files belong to the uploader;
 a bot cannot attach another member's unposted file.
 
-Mention a conversation member using `@username` in message text. A mention must
+Mention a conversation member using `<@PERSON_ID>` (stable across renames) or
+`@username` in message text. The UI displays their current name. A mention must
 refer to an active member of that conversation to generate a mention count.
 Messages from bots never automatically invoke connected agents.
 
@@ -93,5 +94,8 @@ API uses polling; outbound HTTP event subscriptions are not implemented.
 Use the [server connector](../packages/connector/README.md) for an existing CLI.
 Its credential and outbound WebSocket protocol are separate from the Bot API.
 A channel mention starts a reply in that message's thread. Mention the bot in a
-subsequent thread reply to resume. Direct messages to an agent bot resume the
+subsequent thread reply to resume, or enable that thread's Auto trigger. Direct messages to an agent bot resume the
 same CLI session across turns. Queued turns wait while that connector is offline.
+
+Repository proposals and task-scoped credentials are documented in
+[Connections and Issues](connections.md).

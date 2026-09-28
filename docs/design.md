@@ -9,16 +9,16 @@ inside the conversation. Controls use literal names: New message, Add member, St
 - Paper: `#fafafa`; surface: `#ffffff`; sidebar: `#f2f2f2`.
 - Ink: `#202020`; secondary ink: `#707070`; rule: `#e5e5e5`.
 - Dark mode uses the same neutral scale: `#151515`, `#1c1c1c`, `#282828`.
-- IBM Plex Sans for the interface and messages; IBM Plex Mono for code only.
+- Self-hosted Inter Variable for the interface and messages; IBM Plex Mono for code only.
 - 14 px interface and conversation text, 13 px in the thread pane.
-- 6 px control radius. Flat message rows, no floating message cards.
+- 6 px control and avatar radius; avatars are rounded rectangles. Flat message rows, no floating message cards.
 
 ## Layout
 
 ```text
 ┌──────────────────────┬─────────────────────────────┬─────────────────────┐
-│ melancholy           │ # engineering        Search │ Thread            × │
-│ async.love           ├─────────────────────────────┼─────────────────────┤
+│ async.love           │ # engineering        Search │ Thread            × │
+│                      ├─────────────────────────────┼─────────────────────┤
 │ New message          │                             │ Original message    │
 │                      │ Name              14:02     │                     │
 │ Channels           + │ Message                     │ Name        14:03   │
@@ -37,14 +37,16 @@ inside the conversation. Controls use literal names: New message, Add member, St
 Left aligned, with a narrow persistent sidebar and flat chronological message
 rows. Unread conversations use weight and a small marker; mention counts appear
 beside their names. A thread opens in a side pane without moving the channel.
+Threads also have a standalone page with a centered conversation column.
+Pending messages appear immediately in italic with a sending label; failures
+keep the message and expose Retry.
 On a phone, navigation becomes a dismissible drawer and the thread uses the
 full conversation area. Composer and member controls remain reachable.
 
 ## Review against the brief
 
 No marketing hero, feature grid, gradient, sparkle icon, fictional activity,
-or greetings. The brand is a quiet lowercase wordmark with a compact drawn
-symbol. The visual emphasis belongs to the content and the current action.
+or greetings. The sidebar uses the workspace name in small type; no large brand mark. The visual emphasis belongs to the content and the current action.
 Agent details appear where they explain execution; infrastructure details stay
 in server settings and documentation. Empty screens offer the next action.
 

@@ -4,6 +4,17 @@ import type { AgentEvent, Job } from "../lib/protocol";
 
 const eventSchema = z.discriminatedUnion("type", [
   z.object({
+    type: z.literal("usage"),
+    usage: z.object({
+      inputTokens: z.number().int().nonnegative().max(1e12),
+      outputTokens: z.number().int().nonnegative().max(1e12),
+      cachedTokens: z.number().int().nonnegative().max(1e12),
+      cacheWriteTokens: z.number().int().nonnegative().max(1e12),
+      costUsd: z.number().nonnegative().max(1e6).optional(),
+      model: z.string().max(200).optional(),
+    }),
+  }),
+  z.object({
     type: z.literal("started"),
     sessionId: z.string().max(200).optional(),
   }),

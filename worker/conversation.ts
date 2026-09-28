@@ -9,6 +9,7 @@ import type {
   Run,
   Runtime,
   Snapshot,
+  TokenUsage,
 } from "../lib/protocol";
 
 type StoredMessage = Omit<ChatMessage, "attachments"> & { attachments: string };
@@ -25,6 +26,8 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
       CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS dirty (message_id TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS chat_dirty (run_id TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS usage (run_id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS usage_dirty (run_id TEXT PRIMARY KEY);
     `);
     ctx.setWebSocketAutoResponse(
       new WebSocketRequestResponsePair("ping", "pong"),
@@ -115,6 +118,15 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
     }
   }
 
+  canExecute(runId: string, serverId: string) {
+    return !!this.ctx.storage.sql
+      .exec(
+        "SELECT 1 FROM runs WHERE id=? AND server_id=? AND status IN ('queued','running')",
+        runId,
+        serverId,
+      )
+      .toArray().length;
+  }
   async send(input: {
     threadId: string;
     serverId: string;
@@ -122,6 +134,7 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
     text: string;
     id: string;
     attachments: Attachment[];
+    context?: string;
     chat?: { roomId: string; botId: string; parentId: string | null };
   }): Promise<{ id: string; duplicate: boolean; error?: string }> {
     const existing = this.ctx.storage.sql
@@ -161,7 +174,7 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
     const job: Job = {
       id: runId,
       threadId: input.threadId,
-      prompt: input.text,
+      prompt: input.text + (input.context || ""),
       runtime: input.runtime,
       sessionId: prior?.session_id ?? null,
       attachments: input.attachments,
@@ -252,6 +265,17 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
         seq,
         runId,
       );
+      if (event.type === "usage") {
+        this.ctx.storage.sql.exec(
+          "INSERT INTO usage VALUES (?,?) ON CONFLICT(run_id) DO UPDATE SET data=excluded.data",
+          runId,
+          JSON.stringify(event.usage),
+        );
+        this.ctx.storage.sql.exec(
+          "INSERT OR IGNORE INTO usage_dirty VALUES (?)",
+          runId,
+        );
+      }
       if (event.type === "started")
         this.ctx.storage.sql.exec(
           "UPDATE runs SET status='running',session_id=COALESCE(?,session_id) WHERE id=?",
@@ -304,8 +328,19 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
         );
     });
     this.broadcast();
-    if (terminal.has(event.type) || this.getMeta("chat"))
+    if (
+      terminal.has(event.type) ||
+      event.type === "usage" ||
+      this.getMeta("chat")
+    )
       await this.ctx.storage.setAlarm(Date.now() + 1000);
+    if (event.type === "usage") {
+      try {
+        await this.syncUsage(runId);
+      } catch {
+        /* Durable alarm retries. */
+      }
+    }
     if (this.getMeta("chat")) {
       try {
         await this.syncChat(runId);
@@ -313,6 +348,48 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
         /* Alarm retries the projection. */
       }
     }
+  }
+  private async syncUsage(runId: string) {
+    const row = this.ctx.storage.sql
+      .exec<{ data: string }>("SELECT data FROM usage WHERE run_id=?", runId)
+      .toArray()[0];
+    const run = this.ctx.storage.sql
+      .exec<StoredRun>("SELECT * FROM runs WHERE id=?", runId)
+      .toArray()[0];
+    if (!row || !run) return;
+    const usage = JSON.parse(row.data) as TokenUsage;
+    const chat = this.getMeta("chat")
+      ? (JSON.parse(this.getMeta("chat")!) as {
+          roomId: string;
+          parentId: string | null;
+        })
+      : null;
+    await this.env.DB.prepare(
+      `INSERT INTO agent_usage VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET input_tokens=excluded.input_tokens,output_tokens=excluded.output_tokens,cached_tokens=excluded.cached_tokens,cache_write_tokens=excluded.cache_write_tokens,cost_usd=excluded.cost_usd,model=excluded.model,reported_at=excluded.reported_at,event_seq=excluded.event_seq WHERE excluded.event_seq>agent_usage.event_seq`,
+    )
+      .bind(
+        runId,
+        run.server_id,
+        chat?.roomId || null,
+        chat?.parentId || chat?.roomId || null,
+        this.getMeta("threadId"),
+        run.runtime,
+        usage.model || null,
+        usage.inputTokens,
+        usage.outputTokens,
+        usage.cachedTokens,
+        usage.cacheWriteTokens,
+        usage.costUsd ?? null,
+        Date.now(),
+        run.event_seq,
+      )
+      .run();
+    this.ctx.storage.sql.exec(
+      "DELETE FROM usage_dirty WHERE run_id=? AND EXISTS(SELECT 1 FROM runs WHERE id=? AND event_seq=?)",
+      runId,
+      runId,
+      run.event_seq,
+    );
   }
   private async syncChat(runId: string) {
     const meta = this.getMeta("chat");
@@ -386,6 +463,10 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
   async alarm() {
     try {
       await this.dispatch();
+      for (const row of this.ctx.storage.sql
+        .exec<{ run_id: string }>("SELECT run_id FROM usage_dirty")
+        .toArray())
+        await this.syncUsage(row.run_id);
       for (const row of this.ctx.storage.sql
         .exec<{ run_id: string }>("SELECT run_id FROM chat_dirty")
         .toArray())

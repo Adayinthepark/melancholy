@@ -1,1 +1,4 @@
 WORKSPACE_KEY=replace-with-a-random-key-at-least-32-characters-long
+
+# Replace with a separate random 32-byte hex key before deploying.
+INTEGRATIONS_KEY=0000000000000000000000000000000000000000000000000000000000000000

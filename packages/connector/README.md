@@ -88,3 +88,30 @@ WantedBy=multi-user.target
 
 Use an explicit, backed-up `--state-dir` for container deployments. Removing a
 server in workspace settings revokes its token and closes its connection.
+
+## Channel credentials and usage
+
+Use the connector from the same release as the Worker. Version 0.3 fetches
+`/api/connector/environment` before spawning each task and fails explicitly if
+that authenticated request fails. Enable GitHub/Cloudflare connections in the
+channel's repository settings. The child receives `GH_TOKEN`, `GITHUB_TOKEN`,
+`CLOUDFLARE_API_TOKEN` and, when configured, `CLOUDFLARE_ACCOUNT_ID`.
+These provider variables are removed from the inherited environment first.
+The service's `MELANCHOLY_TOKEN` is never passed to the child.
+
+A short-lived, channel-scoped `MELANCHOLY_API_TOKEN`, `MELANCHOLY_URL` and
+`MELANCHOLY_ROOM_ID` let the agent read repository context and propose new
+repository links. This token is invalid once the run ends and cannot approve
+its own proposals. See [connections](../../docs/connections.md).
+
+Exact token values are redacted from emitted text, tools and error details.
+This is a transport precaution, not an isolation boundary: a privileged CLI
+can still read the server's filesystem and other locally configured logins.
+Use a dedicated OS account/container when those credentials must be isolated.
+Disabling a channel connection affects future fetches; stop an active task
+and revoke the provider token if it must lose access immediately.
+
+Codex and Claude usage reports are sent as absolute per-run counters. Missing
+usage stays unreported; the connector does not estimate tokens from text.
+Claude usage and multi-model result handling are covered by fixtures; a live
+Claude installation is still required to validate a particular CLI version.

@@ -77,7 +77,7 @@ including two-character Chinese terms. Search always checks conversation access.
 
 ## Connected agent turns
 
-A human's explicit bot mention, or a message in a one-to-one bot DM, creates a
+A human's explicit bot mention, a reply in an auto-trigger thread, or a message in a one-to-one bot DM, creates a
 persistent agent request in the message transaction. Messages from bots never
 trigger agents, preventing bot reply loops. Dispatchers retry queued requests;
 a minute Cron Trigger also recovers committed requests after a missed dispatch
@@ -85,7 +85,7 @@ notification. concurrent turns are
 serialized by the existing conversation and connector protocols.
 
 A channel thread has a separate CLI session per bot. A bot DM keeps one session
-for the whole conversation. The existing Conversation DO stores the agent run,
+for top-level messages. A reply thread inside a DM gets its own session. The existing Conversation DO stores the agent run,
 its messages, tool events and a durable output projection queue. Responses are
 projected into D1 as messages authored by the bot, then invalidate member inboxes.
 Each projected run has a sequence checkpoint, so late output cannot overwrite
@@ -98,8 +98,9 @@ an interrupted task failed instead of re-executing filesystem side effects.
 
 Prompts go to stdin with `shell: false`. Executable, runtime, working directory
 and permissions come from local connector config. The workspace token is removed
-from the CLI child's environment. Other inherited environment variables and
-filesystem credentials remain the server operator's responsibility. `inherit`
+from the CLI child's environment. Approved provider credentials are fetched for the active run and injected only
+into that CLI process. Inherited GitHub/Cloudflare credential variables are
+removed first. Other inherited environment variables and filesystem credentials remain the server operator's responsibility. `inherit`
 uses the operator's existing CLI policy; it never activates automatically after
 a sandbox failure. The web UI cannot approve interactive tool escalations.
 
@@ -126,3 +127,48 @@ Deployments use additive D1 and Durable Object migrations. Back up D1 before an
 upgrade. The Cloudflare app does not deploy or upgrade a server's connector;
 restart that service separately when connector code changes. CI runs the same
 checks listed in the README and requires an available GitHub Actions account.
+
+## Workbench data
+
+Profile names and usernames can change; member IDs stay stable. Mentions use
+`<@person-id>` on the wire, with a snapshot mapping for older `@username` text.
+The frontend resolves these to current display names. Code spans/fences remain
+literal. Avatar objects are private R2 images with authenticated retrieval.
+
+The browser appends pending messages before waiting for HTTP. The stable UUID
+is reused for retries, including lost acknowledgements. D1 persistence precedes
+the HTTP acknowledgement; inbox invalidation and agent dispatch use `waitUntil`.
+The existing minute recovery job retries durable agent requests after interruption.
+Pending drafts are memory-only; reloading discards an unsent draft.
+
+GitHub/Cloudflare tokens are encrypted with AES-GCM, random 96-bit IVs and the
+connection ID as authenticated context. `INTEGRATIONS_KEY` is a dedicated Worker
+secret. Only the owner can manage connections, link repositories, approve bot
+proposals and enable agent credentials per channel. Enabling one connection
+of a provider disables other connections of that provider for agent use in
+that channel. Human channel members can edit Issues through a linked repository;
+this delegates the owner's connected GitHub permissions to that conversation.
+Tokens are never returned by browser APIs.
+
+A connector can fetch credentials only for a run on its server that is queued
+or running. Each fetch rechecks bot membership and current channel grants.
+Jobs and delivery journals never contain provider credentials. A random task
+API token is also issued for repository metadata/proposals in that one channel;
+its hash is stored in D1, and each request rechecks run state and bot membership.
+It cannot approve repository links, edit Issues or access other rooms. Expired
+task tokens are pruned when new tasks fetch credentials.
+
+Issue APIs call GitHub directly; lists refresh on opening or changing filters.
+There is no outbound webhook registration or background Issue synchronization.
+Linked Issue threads add repository and Issue URLs to the agent prompt.
+
+Usage comes from Codex `turn.completed.usage` or Claude's final `result.usage`.
+The Conversation DO stores absolute per-run usage and a durable projection
+queue. D1 upserts are guarded by event sequence, so replayed reports do not add
+usage twice. Rows retain server, room, root message and CLI session IDs. Global
+and filtered totals include all reports; detail tables cap at 500 latest groups.
+Input totals include cache reads and writes; cached input is a subset. Pricing
+is shown only if reported by the CLI; unknown model names are not inferred.
+Cancelled/crashed turns without a usage report cannot be counted, and reports
+before this release cannot be reconstructed. These are usage records, not a
+replacement for the provider's billing statement.

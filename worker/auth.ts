@@ -36,7 +36,7 @@ export async function authenticate(request: Request): Promise<Identity | null> {
     ?.slice(COOKIE.length + 1);
   if (!token || token.length !== 64) return null;
   const record = await env.DB.prepare(
-    "SELECT p.id,p.handle,p.name,p.kind,p.role,p.active,p.server_id,s.expires_at FROM sessions s JOIN people p ON p.id=s.person_id WHERE s.token_hash=? AND s.expires_at>? AND p.active=1",
+    "SELECT p.id,p.handle,p.name,p.kind,p.role,p.active,p.server_id,p.avatar_key,s.expires_at FROM sessions s JOIN people p ON p.id=s.person_id WHERE s.token_hash=? AND s.expires_at>? AND p.active=1",
   )
     .bind(await hash(token), Date.now())
     .first<Identity & { expires_at: number }>();

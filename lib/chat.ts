@@ -7,6 +7,7 @@ export type Person = {
   role: "owner" | "member";
   active: number;
   server_id: string | null;
+  avatar_key?: string | null;
 };
 export type Room = {
   id: string;
@@ -41,6 +42,10 @@ export type TeamMessage = {
   run_error: string | null;
   activity: Activity[];
   author: Person;
+  mentioned_people?: Person[];
+  mention_refs?: Record<string, string>;
+  delivery?: "sending" | "failed";
+  delivery_error?: string;
 };
 export type TeamWorkspace = {
   name: string;

@@ -1,5 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Runtime, Attachment } from "../lib/protocol";
+import { repositoryContext } from "./integrations";
+import { mentionText } from "../lib/mentions";
+import { personColumns } from "./team-store";
+import type { Person } from "../lib/chat";
 import { publish } from "./team-store";
 export class ChatDispatcher extends DurableObject<Cloudflare.Env> {
   private flushing = false;
@@ -38,24 +42,27 @@ export class ChatDispatcher extends DurableObject<Cloudflare.Env> {
           await this.finish(row, "Bot is unavailable.");
           continue;
         }
-        const room = await this.env.DB.prepare(
-          "SELECT kind FROM rooms WHERE id=?",
-        )
-          .bind(roomId)
-          .first<{ kind: string }>();
         const result = await this.env.CONVERSATIONS.getByName(
           row.thread_id,
         ).send({
           threadId: row.thread_id,
           serverId: row.server_id,
           runtime: row.runtime,
-          text: row.text,
+          text: mentionText(
+            row.text,
+            (
+              await this.env.DB.prepare(
+                `SELECT ${personColumns} FROM people WHERE active=1`,
+              ).all<Person>()
+            ).results,
+          ),
+          context: await repositoryContext(roomId, row.root_id),
           id: row.message_id,
           attachments: JSON.parse(row.attachments) as Attachment[],
           chat: {
             roomId,
             botId: row.bot_id,
-            parentId: room?.kind === "dm" ? null : row.root_id,
+            parentId: row.root_id === roomId ? null : row.root_id,
           },
         });
         if (result.error) continue;

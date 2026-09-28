@@ -4,7 +4,6 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Mark } from "./brand";
 import { post } from "@/lib/client";
 export function Login({ onLogin }: { onLogin: () => void }) {
   const [mode, setMode] = useState<"member" | "owner" | "join">("member"),
@@ -46,7 +45,6 @@ export function Login({ onLogin }: { onLogin: () => void }) {
   return (
     <main className="login-page">
       <a className="login-wordmark" href="/">
-        <Mark />
         melancholy
       </a>
       <form

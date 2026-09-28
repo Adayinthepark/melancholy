@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MessageMarkdown } from "./message-markdown";
+import { PersonAvatar } from "./person-avatar";
+import { mentionText, encodeMentions } from "@/lib/mentions";
 import {
   MessageSquare,
   SmilePlus,
@@ -70,6 +71,7 @@ export function ChatTimeline({
   onChange,
   thread = false,
   unreadAfter = 0,
+  onRetry,
 }: {
   messages: TeamMessage[];
   me: Person;
@@ -79,6 +81,7 @@ export function ChatTimeline({
   onChange: () => Promise<void>;
   thread?: boolean;
   unreadAfter?: number;
+  onRetry?: (message: TeamMessage) => void;
 }) {
   const firstUnread = unreadAfter
     ? messages.find((m) => m.seq > unreadAfter && m.author_id !== me.id)?.id
@@ -126,6 +129,7 @@ export function ChatTimeline({
                     onThread={onThread}
                     onChange={onChange}
                     thread={thread}
+                    onRetry={onRetry}
                   />
                 </MessageScrollerItem>
               );
@@ -143,12 +147,14 @@ export function ChatRow({
   onThread,
   onChange,
   thread = false,
+  onRetry,
 }: {
   message: TeamMessage;
   me: Person;
   onThread: (m: TeamMessage) => void;
   onChange: () => Promise<void>;
   thread?: boolean;
+  onRetry?: (message: TeamMessage) => void;
 }) {
   const [edit, setEdit] = useState(false),
     [draft, setDraft] = useState(m.text),
@@ -179,15 +185,15 @@ export function ChatRow({
   }
   return (
     <article
-      className={"chat-row" + (m.deleted_at ? " deleted" : "")}
+      className={
+        "chat-row" +
+        (m.deleted_at ? " deleted" : "") +
+        (m.delivery ? " delivery-" + m.delivery : "")
+      }
       data-message-id={m.id}
     >
       <Message align="start">
-        <Avatar className="chat-avatar">
-          <AvatarFallback>
-            {m.author?.name.slice(0, 2).toUpperCase() || "?"}
-          </AvatarFallback>
-        </Avatar>
+        <PersonAvatar person={m.author || me} className="chat-avatar" />
         <MessageContent>
           <MessageHeader className="chat-message-header">
             <strong>{m.author?.name || "Former member"}</strong>
@@ -199,6 +205,7 @@ export function ChatRow({
               })}
             </time>
             {m.edited_at && !m.deleted_at && <span>edited</span>}
+            {m.delivery === "sending" && <em>Sending…</em>}
           </MessageHeader>
           <Bubble variant="ghost" className="chat-bubble">
             <BubbleContent>
@@ -207,22 +214,11 @@ export function ChatRow({
               ) : (
                 <>
                   <div className="markdown">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        a: ({ children, ...props }) => (
-                          <a
-                            {...props}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {children}
-                          </a>
-                        ),
-                      }}
-                    >
-                      {m.text}
-                    </ReactMarkdown>
+                    <MessageMarkdown
+                      text={m.text}
+                      people={m.mentioned_people}
+                      refs={m.mention_refs}
+                    />
                   </div>
                   {!!m.attachments.length && (
                     <div className="chat-attachments">
@@ -359,7 +355,15 @@ export function ChatRow({
           )}
         </MessageContent>
       </Message>
-      {!m.deleted_at && (
+      {m.delivery === "failed" && (
+        <div className="message-send-error" role="alert">
+          <span>{m.delivery_error || "Message not sent."}</span>
+          <Button size="xs" variant="ghost" onClick={() => onRetry?.(m)}>
+            Retry
+          </Button>
+        </div>
+      )}
+      {!m.deleted_at && !m.delivery && (
         <div className="chat-row-actions">
           <Button
             variant="ghost"
@@ -410,7 +414,13 @@ export function ChatRow({
                 {m.author_id === me.id && (
                   <DropdownMenuItem
                     onClick={() => {
-                      setDraft(m.text);
+                      setDraft(
+                        mentionText(
+                          m.text,
+                          m.mentioned_people || [],
+                          m.mention_refs,
+                        ),
+                      );
                       setEdit(true);
                     }}
                   >
@@ -459,7 +469,9 @@ export function ChatRow({
                 void action(async () => {
                   await api("/chat/messages/" + m.id, {
                     method: "PATCH",
-                    body: JSON.stringify({ text: draft }),
+                    body: JSON.stringify({
+                      text: encodeMentions(draft, m.mentioned_people || []),
+                    }),
                   });
                   setEdit(false);
                 })

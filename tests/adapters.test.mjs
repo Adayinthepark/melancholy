@@ -102,3 +102,90 @@ test(
     }
   },
 );
+
+test("Codex reports total input with cached input as a subset", () => {
+  const events = [];
+  const parser = new OutputParser("codex", (e) => events.push(e));
+  parser.accept({
+    type: "turn.completed",
+    usage: { input_tokens: 100, output_tokens: 12, cached_input_tokens: 60 },
+  });
+  assert.deepEqual(events.at(-1), {
+    type: "usage",
+    usage: {
+      inputTokens: 100,
+      outputTokens: 12,
+      cachedTokens: 60,
+      cacheWriteTokens: 0,
+    },
+  });
+});
+test("Claude usage includes cache reads and writes without summing modelUsage twice", () => {
+  const events = [];
+  const parser = new OutputParser("claude", (e) => events.push(e));
+  parser.accept({
+    type: "result",
+    usage: {
+      input_tokens: 10,
+      output_tokens: 20,
+      cache_read_input_tokens: 30,
+      cache_creation_input_tokens: 40,
+    },
+    modelUsage: { first: {}, second: {} },
+    total_cost_usd: 0.04,
+  });
+  assert.deepEqual(events.at(-1), {
+    type: "usage",
+    usage: {
+      inputTokens: 80,
+      outputTokens: 20,
+      cachedTokens: 30,
+      cacheWriteTokens: 40,
+      costUsd: 0.04,
+    },
+  });
+});
+import {
+  agentEnvironment,
+  redactor,
+} from "../packages/connector/environment.mjs";
+test("task environments drop inherited provider credentials and reject arbitrary overrides", () => {
+  const result = agentEnvironment(
+    {
+      PATH: "/usr/bin",
+      GH_TOKEN: "old",
+      MELANCHOLY_TOKEN: "connector",
+      CF_API_KEY: "global-key",
+      OPENAI_API_KEY: "cli-auth",
+    },
+    {
+      GH_TOKEN: "approved",
+      NODE_OPTIONS: "--import=bad",
+      MELANCHOLY_TOKEN: "spoof",
+      MELANCHOLY_API_TOKEN: "task-token",
+    },
+  );
+  assert.deepEqual(result, {
+    PATH: "/usr/bin",
+    OPENAI_API_KEY: "cli-auth",
+    GH_TOKEN: "approved",
+    MELANCHOLY_API_TOKEN: "task-token",
+  });
+});
+test("redaction covers tool events and failure details recursively", () => {
+  const redact = redactor({
+    GH_TOKEN: "test-provider-secret",
+    MELANCHOLY_API_TOKEN: "test-task-secret",
+    CLOUDFLARE_ACCOUNT_ID: "public-account",
+  });
+  assert.deepEqual(
+    redact({
+      error: "bad test-provider-secret",
+      events: [{ detail: "test-task-secret public-account" }],
+    }),
+    {
+      error: "bad [redacted]",
+      events: [{ detail: "[redacted] public-account" }],
+    },
+  );
+});

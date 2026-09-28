@@ -22,6 +22,9 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { ConnectionsSettings } from "./connections-settings";
+import { UsageDialog } from "./usage-dialog";
+import { PersonAvatar } from "./person-avatar";
 import { api, post } from "@/lib/client";
 import type { TeamWorkspace } from "@/lib/chat";
 export function Choice({
@@ -76,8 +79,10 @@ export function TeamSettings({
   onChange: () => Promise<void>;
   onServers: () => void;
 }) {
+  const [usageOpen, setUsageOpen] = useState(false);
   const [tab, setTab] = useState("profile"),
     [name, setName] = useState(workspace.me.name),
+    [username, setUsername] = useState(workspace.me.handle),
     [password, setPassword] = useState(""),
     [invite, setInvite] = useState(""),
     [busy, setBusy] = useState(false),
@@ -98,6 +103,7 @@ export function TeamSettings({
   useEffect(() => {
     if (open) {
       setName(workspace.me.name);
+      setUsername(workspace.me.handle);
       void refreshTokens().catch((e) => toast.error(e.message));
     } else {
       setInvite("");
@@ -156,21 +162,24 @@ export function TeamSettings({
           </DialogDescription>
         </DialogHeader>
         <div className="settings-tabs" role="tablist">
-          {["profile", "members", ...(admin ? ["integrations"] : [])].map(
-            (t) => (
-              <Button
-                role="tab"
-                aria-selected={tab === t}
-                key={t}
-                size="sm"
-                variant={tab === t ? "secondary" : "ghost"}
-                onClick={() => setTab(t)}
-              >
-                {t[0].toUpperCase() + t.slice(1)}
-              </Button>
-            ),
-          )}
+          {[
+            "profile",
+            "members",
+            ...(admin ? ["integrations", "connections"] : []),
+          ].map((t) => (
+            <Button
+              role="tab"
+              aria-selected={tab === t}
+              key={t}
+              size="sm"
+              variant={tab === t ? "secondary" : "ghost"}
+              onClick={() => setTab(t)}
+            >
+              {t[0].toUpperCase() + t.slice(1)}
+            </Button>
+          ))}
         </div>
+        {tab === "connections" && admin && <ConnectionsSettings />}
         {tab === "profile" && (
           <form
             onSubmit={(e) => {
@@ -180,6 +189,7 @@ export function TeamSettings({
                   method: "PATCH",
                   body: JSON.stringify({
                     name,
+                    handle: username,
                     ...(password ? { password } : {}),
                   }),
                 });
@@ -189,6 +199,43 @@ export function TeamSettings({
             }}
           >
             <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="profile-avatar">Avatar</FieldLabel>
+                <div className="profile-avatar-control">
+                  <PersonAvatar person={workspace.me} />
+                  <Input
+                    id="profile-avatar"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    aria-label="Upload avatar"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file)
+                        void act(async () => {
+                          await api("/chat/avatar", {
+                            method: "POST",
+                            headers: { "Content-Type": file.type },
+                            body: file,
+                          });
+                        });
+                    }}
+                  />
+                  {workspace.me.avatar_key && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        void act(() =>
+                          api("/chat/avatar", { method: "DELETE" }),
+                        )
+                      }
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </div>
+              </Field>
               <Field>
                 <FieldLabel htmlFor="profile-name">Display name</FieldLabel>
                 <Input
@@ -202,8 +249,10 @@ export function TeamSettings({
               <Field>
                 <FieldLabel>Username</FieldLabel>
                 <Input
-                  readOnly
-                  value={workspace.me.handle}
+                  value={username}
+                  required
+                  pattern="[a-z][a-z0-9_-]{1,39}"
+                  onChange={(e) => setUsername(e.target.value.toLowerCase())}
                   aria-label="Your username"
                 />
               </Field>
@@ -257,6 +306,7 @@ export function TeamSettings({
                 .filter((p) => p.kind === "human")
                 .map((p) => (
                   <div key={p.id} className="person-row">
+                    <PersonAvatar person={p} />
                     <div>
                       <strong>{p.name}</strong>
                       <span>@{p.handle}</span>
@@ -299,6 +349,10 @@ export function TeamSettings({
         )}
         {tab === "integrations" && admin && (
           <div className="settings-section">
+            <Button variant="outline" onClick={() => setUsageOpen(true)}>
+              Workspace token usage
+            </Button>
+            <UsageDialog open={usageOpen} onOpenChange={setUsageOpen} />
             <Button variant="outline" onClick={onServers}>
               <Server />
               Connect an agent server

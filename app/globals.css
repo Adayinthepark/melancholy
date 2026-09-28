@@ -1,28 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
 @custom-variant dark (&:is(.dark *));
-@font-face {
-  font-family: "IBM Plex Sans";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "IBM Plex Sans";
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("/fonts/ibm-plex-sans-latin-500-normal.woff2") format("woff2");
-}
-@font-face {
-  font-family: "IBM Plex Sans";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("/fonts/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
-}
 @font-face {
   font-family: "IBM Plex Mono";
   font-style: normal;
@@ -78,8 +58,8 @@
   --sidebar-foreground: #bcbcbc;
 }
 @theme inline {
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-heading: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -856,8 +836,8 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 20px;
-  letter-spacing: -0.8px;
+  font-size: 15px;
+  letter-spacing: -0.2px;
   font-weight: 500;
 }
 .login-wordmark svg {
@@ -1820,5 +1800,308 @@
   }
   .chat-file {
     max-width: 240px;
+  }
+}
+
+/* Workbench: compact controls, neutral surfaces and square profile images. */
+[data-slot="avatar"],
+[data-slot="avatar-fallback"],
+[data-slot="avatar-image"] {
+  border-radius: 6px;
+}
+.person-avatar {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+}
+.team-room-link .person-avatar {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+}
+.person-row .person-avatar {
+  width: 28px;
+  height: 28px;
+}
+.profile-avatar-control {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.profile-avatar-control .person-avatar {
+  width: 52px;
+  height: 52px;
+}
+.team-sidebar .workspace-brand,
+.team-mobile-nav .workspace-brand {
+  font-size: 15px;
+  padding: 20px 10px;
+  margin-bottom: 5px;
+}
+.mention-name {
+  background: var(--accent);
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-weight: 500;
+}
+.delivery-sending .markdown,
+.delivery-sending .chat-message-header em {
+  font-style: italic;
+  color: var(--muted-foreground);
+}
+.message-send-error {
+  margin: 6px 0 0 43px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--destructive);
+  font-size: 12px;
+}
+.thread-controls {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.thread-auto {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.thread-auto > label {
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+.thread-auto fieldset {
+  min-width: 90px;
+  max-width: 135px;
+}
+.thread-auto [data-slot="select-trigger"] {
+  height: 28px;
+  font-size: 12px;
+}
+.team-thread {
+  width: 440px;
+}
+.thread-focus .team-sidebar,
+.thread-focus .team-channel {
+  display: none;
+}
+.thread-focus .team-thread {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  height: 100%;
+  border: 0;
+}
+.thread-focus .team-conversation-layout {
+  overflow: hidden;
+}
+.thread-focus .team-thread .chat-row {
+  padding: 12px 28px;
+}
+.thread-focus .team-thread .markdown {
+  font-size: 14px;
+}
+.thread-focus .team-topbar {
+  justify-content: center;
+}
+.thread-focus .team-heading {
+  max-width: 700px;
+  flex: 1;
+}
+.channel-workbench {
+  max-height: 90dvh;
+  overflow: auto;
+}
+.workbench-tabs,
+.issue-toolbar,
+.issue-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.issue-toolbar {
+  margin-bottom: 18px;
+}
+.issue-toolbar > [data-slot="select-trigger"]:first-child {
+  flex: 1;
+}
+.issue-toolbar > [data-slot="select-trigger"] {
+  width: auto;
+  min-width: 90px;
+}
+.repository-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.repository-row > a,
+.repository-row > div:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.repository-row small,
+.person-row small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  margin-top: 3px;
+}
+.repository-row > [data-slot="select-trigger"] {
+  max-width: 215px;
+}
+.issue-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  align-items: baseline;
+  padding: 13px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.issue-row:hover {
+  background: var(--muted);
+}
+.issue-row > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.issue-row strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.issue-row small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+.issue-number,
+.issue-row > span:last-child,
+.issue-actions > span {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.issue-detail h2 {
+  font-size: 19px;
+  line-height: 1.5;
+  margin: 18px 0 10px;
+}
+.issue-detail h2 > span {
+  color: var(--muted-foreground);
+}
+.issue-detail .markdown {
+  margin: 16px 0;
+  overflow-wrap: anywhere;
+}
+.issue-detail .markdown pre {
+  max-width: 100%;
+}
+.issue-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.issue-comment {
+  border-top: 1px solid var(--border);
+  padding: 16px 0;
+}
+.issue-actions {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.issue-actions > a {
+  font-size: 12px;
+  text-decoration: underline;
+}
+.usage-totals {
+  display: flex;
+  gap: 36px;
+  padding: 16px 0;
+}
+.usage-totals > span {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.usage-totals strong {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.usage-table {
+  overflow: auto;
+  max-height: 55vh;
+}
+.usage-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.usage-table th,
+.usage-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.usage-table small,
+.usage-table a {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted-foreground);
+}
+.server-rename {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+@media (max-width: 700px) {
+  .thread-controls {
+    gap: 0;
+  }
+  .thread-auto {
+    gap: 4px;
+  }
+  .thread-auto > label {
+    font-size: 10px;
+  }
+  .thread-auto fieldset {
+    max-width: 110px;
+    min-width: 70px;
+  }
+  .team-thread {
+    width: 100%;
+  }
+  .thread-focus .team-thread .chat-row {
+    padding: 10px 14px;
+  }
+  .issue-toolbar {
+    flex-wrap: wrap;
+  }
+  .repository-row {
+    flex-wrap: wrap;
+  }
+  .repository-row > [data-slot="select-trigger"] {
+    max-width: 100%;
+  }
+  .usage-totals {
+    gap: 20px;
+  }
+  .usage-totals strong {
+    font-size: 20px;
+  }
+  .channel-workbench {
+    max-width: calc(100% - 20px);
   }
 }

@@ -6,9 +6,11 @@ export type Identity = Person & {
   expires: number;
   sessionHash?: string;
   tokenId?: string;
+  taskRunId?: string;
   roomScope?: string | null;
 };
-export const publicPerson = "id,handle,name,kind,role,active,server_id";
+export const publicPerson =
+  "id,handle,name,kind,role,active,server_id,avatar_key";
 export class ChatError extends Error {
   constructor(
     public status: number,
@@ -67,6 +69,27 @@ export async function bearerIdentity(
     .bind(tokenHash)
     .first<Person & { tokenId: string; roomScope: string | null }>();
   if (bot) return { ...bot, expires: Date.now() + 60000 };
+  const task = await env.DB.prepare(
+    "SELECT p.*,t.run_id AS taskRunId,t.thread_id,t.server_id AS taskServer,t.room_id AS roomScope,t.expires_at FROM task_credentials t JOIN people p ON p.id=t.bot_id JOIN servers s ON s.id=t.server_id JOIN room_members m ON m.person_id=p.id AND m.room_id=t.room_id WHERE t.token_hash=? AND t.expires_at>? AND p.active=1 AND p.server_id=t.server_id",
+  )
+    .bind(tokenHash, Date.now())
+    .first<
+      Person & {
+        taskRunId: string;
+        thread_id: string;
+        taskServer: string;
+        roomScope: string;
+        expires_at: number;
+      }
+    >();
+  if (
+    task &&
+    (await env.CONVERSATIONS.getByName(task.thread_id).canExecute(
+      task.taskRunId,
+      task.taskServer,
+    ))
+  )
+    return { ...task, expires: task.expires_at };
   if (!allowConnector) return null;
   const connector = await env.DB.prepare(
     "SELECT p.* FROM people p JOIN servers s ON s.id=p.server_id WHERE s.token_hash=? AND p.active=1",

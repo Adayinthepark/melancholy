@@ -17,6 +17,8 @@ import {
   Download,
   LogOut,
   ChevronDown,
+  GitBranch,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -62,7 +64,12 @@ import {
 import { api, post, ApiError } from "@/lib/client";
 import type { Room, TeamWorkspace, TeamMessage, MessagePage } from "@/lib/chat";
 import type { Server, Workspace } from "@/lib/protocol";
-import { Mark } from "./brand";
+import { PersonAvatar } from "./person-avatar";
+import { ThreadControls } from "./thread-controls";
+import { UsageDialog } from "./usage-dialog";
+import { ChannelWorkbench } from "./channel-workbench";
+import { mentionText } from "@/lib/mentions";
+import type { Attachment } from "@/lib/protocol";
 import { Login } from "./login";
 import { ChatTimeline } from "./chat-timeline";
 import { ChatComposer } from "./chat-composer";
@@ -91,7 +98,12 @@ function merged(previous: MessagePage, next: MessagePage): MessagePage {
     hasMore: older.length ? previous.hasMore : next.hasMore,
   };
 }
-export function TeamWorkspaceApp() {
+export function TeamWorkspaceApp({
+  focusedThread,
+}: { focusedThread?: string } = {}) {
+  const [pending, setPending] = useState<TeamMessage[]>([]),
+    [workbench, setWorkbench] = useState(false),
+    [usage, setUsage] = useState(false);
   const [workspace, setWorkspace] = useState<TeamWorkspace | null>(null),
     [signedIn, setSignedIn] = useState<boolean | null>(null),
     [error, setError] = useState("");
@@ -157,6 +169,21 @@ export function TeamWorkspaceApp() {
     setDark(document.documentElement.classList.contains("dark"));
     void refresh();
   }, [refresh]);
+  useEffect(() => {
+    if (!focusedThread || !signedIn) return;
+    let live = true;
+    void api<{ message: TeamMessage }>("/chat/messages/" + focusedThread)
+      .then(({ message }) => {
+        if (live) {
+          setRoomId(message.room_id);
+          setThreadId(message.parent_id || message.id);
+        }
+      })
+      .catch((e) => toast.error(e.message));
+    return () => {
+      live = false;
+    };
+  }, [focusedThread, signedIn]);
   const current = workspace?.rooms.find((r) => r.id === roomId),
     admin = workspace?.me.role === "owner";
   const load = useCallback(
@@ -342,7 +369,7 @@ export function TeamWorkspaceApp() {
     history.replaceState(
       null,
       "",
-      "?room=" + encodeURIComponent(id) + (thread ? "&thread=" + thread : ""),
+      "/?room=" + encodeURIComponent(id) + (thread ? "&thread=" + thread : ""),
     );
   }
   function openThread(m: TeamMessage) {
@@ -419,7 +446,7 @@ export function TeamWorkspaceApp() {
           </>
         ) : (
           <>
-            <Mark />
+            <span className="workspace-name">melancholy</span>
             <Skeleton className="h-4 w-36" />
             <Skeleton className="h-3 w-24" />
           </>
@@ -427,13 +454,99 @@ export function TeamWorkspaceApp() {
       </main>
     );
   const me = workspace.me;
+  const visibleMessages = [
+    ...page.messages,
+    ...pending.filter(
+      (m) =>
+        m.room_id === roomId &&
+        !m.parent_id &&
+        !page.messages.some((p) => p.id === m.id),
+    ),
+  ];
+  const visibleReplies = [
+    ...replies.messages,
+    ...pending.filter(
+      (m) =>
+        m.room_id === roomId &&
+        m.parent_id === threadId &&
+        !replies.messages.some((p) => p.id === m.id),
+    ),
+  ];
+  async function deliver(m: TeamMessage) {
+    setPending((list) => [
+      ...list.filter((p) => p.id !== m.id),
+      { ...m, delivery: "sending", delivery_error: undefined },
+    ]);
+    try {
+      const { message } = await post<{ message: TeamMessage }>(
+        "/chat/rooms/" + m.room_id + "/messages",
+        {
+          id: m.id,
+          text: m.text,
+          attachments: m.attachments.map((f) => f.id),
+          parentId: m.parent_id,
+        },
+      );
+      if (active.current.roomId === m.room_id) {
+        const insert = (p: MessagePage) => ({
+          ...p,
+          messages: [
+            ...p.messages.filter((x) => x.id !== message.id),
+            message,
+          ].sort((a, b) => a.seq - b.seq),
+          latest: Math.max(p.latest, message.seq),
+        });
+        if (!m.parent_id) setPage(insert);
+        else if (active.current.threadId === m.parent_id) setReplies(insert);
+      }
+      setPending((list) => list.filter((p) => p.id !== m.id));
+      void latestRefresh.current();
+    } catch (e) {
+      setPending((list) =>
+        list.map((p) =>
+          p.id === m.id
+            ? { ...p, delivery: "failed", delivery_error: (e as Error).message }
+            : p,
+        ),
+      );
+    }
+  }
+  function sendDraft(draft: {
+    id: string;
+    text: string;
+    attachments: Attachment[];
+    parentId?: string;
+  }) {
+    void deliver({
+      id: draft.id,
+      seq: 0,
+      room_id: roomId,
+      parent_id: draft.parentId || null,
+      author_id: me.id,
+      author: me,
+      text: draft.text,
+      created_at: Date.now(),
+      edited_at: null,
+      deleted_at: null,
+      attachments: draft.attachments,
+      reactions: [],
+      reply_count: 0,
+      run_id: null,
+      run_status: null,
+      run_error: null,
+      activity: [],
+      mentioned_people: current?.members,
+      delivery: "sending",
+    });
+  }
+  function retryMessage(m: TeamMessage) {
+    void deliver(m);
+  }
   const sidebar = (
     <>
       <a className="workspace-brand" href="/">
-        <Mark />
-        melancholy
+        {workspace.name}
       </a>
-      <div className="team-workspace-name">{workspace.name}</div>
       <Button
         className="team-new-message"
         variant="outline"
@@ -508,7 +621,13 @@ export function TeamWorkspaceApp() {
               }
               onClick={() => choose(r.id)}
             >
-              {r.kind === "group" ? <Users /> : <MessageSquare />}
+              {r.kind === "group" ? (
+                <Users />
+              ) : (
+                <PersonAvatar
+                  person={r.members.find((p) => p.id !== me.id) || me}
+                />
+              )}
               <span>{roomName(r, me.id)}</span>
               {r.mentions > 0 ? (
                 <Badge variant="secondary">{r.mentions}</Badge>
@@ -519,10 +638,12 @@ export function TeamWorkspaceApp() {
           ))}
       </nav>
       <div className="team-account">
-        <button onClick={() => setSettings(true)} className="team-profile">
-          <span className="profile-initial">
-            {me.name.slice(0, 1).toUpperCase()}
-          </span>
+        <button
+          onClick={() => setSettings(true)}
+          className="team-profile"
+          aria-label="Workspace settings"
+        >
+          <PersonAvatar person={me} />
           <span>{me.name}</span>
         </button>
         <DropdownMenu>
@@ -555,7 +676,7 @@ export function TeamWorkspaceApp() {
     </>
   );
   return (
-    <div className="team-shell">
+    <div className={"team-shell" + (focusedThread ? " thread-focus" : "")}>
       <aside className="team-sidebar">{sidebar}</aside>
       <Sheet open={mobile} onOpenChange={setMobile}>
         <SheetContent side="left" className="team-mobile-nav">
@@ -603,6 +724,24 @@ export function TeamWorkspaceApp() {
             <span>{current?.topic}</span>
           </div>
           <div className="team-top-actions">
+            {current?.kind === "channel" && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Repositories and issues"
+                onClick={() => setWorkbench(true)}
+              >
+                <GitBranch />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Channel token usage"
+              onClick={() => setUsage(true)}
+            >
+              <BarChart3 />
+            </Button>
             {connection === "reconnecting" && (
               <span className="connection-label">Reconnecting…</span>
             )}
@@ -647,9 +786,10 @@ export function TeamWorkspaceApp() {
                     <Skeleton className="h-4 w-40" />
                     <Skeleton className="h-4 w-64" />
                   </div>
-                ) : page.messages.length ? (
+                ) : visibleMessages.length ? (
                   <ChatTimeline
-                    messages={page.messages}
+                    messages={visibleMessages}
+                    onRetry={retryMessage}
                     me={me}
                     hasMore={page.hasMore}
                     onOlder={() => void older()}
@@ -681,7 +821,7 @@ export function TeamWorkspaceApp() {
                       (current.kind === "channel" ? "#" : "") +
                       roomName(current, me.id)
                     }
-                    onSent={() => latestRefresh.current()}
+                    onSend={sendDraft}
                   />
                 ) : (
                   <div className="join-channel">
@@ -714,18 +854,29 @@ export function TeamWorkspaceApp() {
             <section className="team-thread" aria-label="Thread">
               <header>
                 <strong>Thread</strong>
+                <ThreadControls
+                  id={threadId}
+                  roomId={roomId}
+                  people={current.members}
+                  focused={!!focusedThread}
+                />
                 <Button
                   variant="ghost"
                   size="icon-sm"
                   aria-label="Close thread"
-                  onClick={() => choose(roomId)}
+                  onClick={() =>
+                    focusedThread
+                      ? location.assign("/?room=" + roomId)
+                      : choose(roomId)
+                  }
                 >
                   <X />
                 </Button>
               </header>
               {root ? (
                 <ChatTimeline
-                  messages={[root, ...replies.messages]}
+                  messages={[root, ...visibleReplies]}
+                  onRetry={retryMessage}
                   me={me}
                   hasMore={replies.hasMore}
                   onOlder={() => void older(true)}
@@ -745,13 +896,28 @@ export function TeamWorkspaceApp() {
                   parentId={threadId}
                   people={current.members}
                   label="Reply in thread"
-                  onSent={() => latestRefresh.current()}
+                  onSend={sendDraft}
                 />
               )}
             </section>
           )}
         </div>
       </main>
+      {current && (
+        <>
+          <UsageDialog open={usage} onOpenChange={setUsage} roomId={roomId} />
+          <ChannelWorkbench
+            open={workbench}
+            onOpenChange={setWorkbench}
+            room={current}
+            workspace={workspace}
+            onThread={(id) => {
+              choose(roomId, id);
+              setWorkbench(false);
+            }}
+          />
+        </>
+      )}
       <Dialog
         open={!!create}
         onOpenChange={(v) => {
@@ -1003,6 +1169,7 @@ export function TeamWorkspaceApp() {
               <div className="settings-member-list">
                 {current.members.map((p) => (
                   <div key={p.id} className="person-row">
+                    <PersonAvatar person={p} />
                     <div>
                       <strong>{p.name}</strong>
                       <span>
@@ -1131,7 +1298,13 @@ export function TeamWorkspaceApp() {
                           : "Conversation"}
                         <span>{m.author.name}</span>
                       </strong>
-                      <p>{m.text.slice(0, 220)}</p>
+                      <p>
+                        {mentionText(
+                          m.text,
+                          m.mentioned_people || workspace.people,
+                          m.mention_refs,
+                        ).slice(0, 220)}
+                      </p>
                     </div>
                   </CommandItem>
                 ))}

@@ -1,5 +1,6 @@
-import { env } from "cloudflare:workers";
+import { env, waitUntil } from "cloudflare:workers";
 import { z } from "zod";
+import { workbench } from "./workbench-api";
 import {
   authenticate,
   checkOrigin,
@@ -49,7 +50,7 @@ const fail = (error: unknown) => {
   );
   return json({ error: "The request could not be completed." }, 500);
 };
-async function bytes(request: Request, max = 1024 * 1024) {
+export async function bytes(request: Request, max = 1024 * 1024) {
   if (Number(request.headers.get("Content-Length")) > max)
     throw new ChatError(413, "Request is too large.");
   const reader = request.body?.getReader();
@@ -74,7 +75,7 @@ async function bytes(request: Request, max = 1024 * 1024) {
   }
   return out;
 }
-async function body(request: Request) {
+export async function body(request: Request) {
   try {
     return JSON.parse(new TextDecoder().decode(await bytes(request)));
   } catch (e) {
@@ -216,7 +217,7 @@ async function agentStatements(
   if (who.kind !== "human") return [];
   const r = await room(m.room_id);
   let bots = mentioned.filter((p) => p.kind === "bot" && p.server_id);
-  if (r.kind === "dm")
+  if (r.kind === "dm" && !m.parent_id)
     bots = (
       await env.DB.prepare(
         `SELECT p.${personColumns.split(",").join(",p.")} FROM room_members rm JOIN people p ON p.id=rm.person_id WHERE rm.room_id=? AND p.kind='bot' AND p.active=1 AND p.server_id IS NOT NULL`,
@@ -224,9 +225,18 @@ async function agentStatements(
         .bind(r.id)
         .all<Person>()
     ).results;
+  if (m.parent_id) {
+    const automatic = await env.DB.prepare(
+      `SELECT p.${personColumns.split(",").join(",p.")} FROM thread_preferences t JOIN people p ON p.id=t.bot_id JOIN room_members rm ON rm.person_id=p.id AND rm.room_id=? WHERE t.root_id=? AND p.active=1 AND p.server_id IS NOT NULL`,
+    )
+      .bind(r.id, m.parent_id)
+      .first<Person>();
+    if (automatic && !bots.some((p) => p.id === automatic.id))
+      bots.push(automatic);
+  }
   const statements: D1PreparedStatement[] = [];
   for (const bot of bots) {
-    const rootId = r.kind === "dm" ? r.id : m.parent_id || m.id;
+    const rootId = m.parent_id || (r.kind === "dm" ? r.id : m.id);
     const digest = await hash(r.id + ":" + rootId + ":" + bot.id);
     const threadId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
     statements.push(
@@ -280,7 +290,7 @@ async function send(request: Request, roomId: string, who: Identity) {
     )
       throw new ChatError(409, "This message identifier is already in use.");
     if (who.kind === "human")
-      await env.CHAT_DISPATCHERS.getByName(roomId).kick(roomId);
+      waitUntil(env.CHAT_DISPATCHERS.getByName(roomId).kick(roomId));
     return json({
       message: (await hydrate([existing], who))[0],
       duplicate: true,
@@ -317,7 +327,7 @@ async function send(request: Request, roomId: string, who: Identity) {
   );
   await env.DB.batch([
     env.DB.prepare(
-      "INSERT INTO chat_messages(id,room_id,parent_id,author_id,text,created_at,attachments) VALUES (?,?,?,?,?,?,?)",
+      "INSERT INTO chat_messages(id,room_id,parent_id,author_id,text,created_at,attachments,mention_refs) VALUES (?,?,?,?,?,?,?,?)",
     ).bind(
       id,
       roomId,
@@ -326,6 +336,7 @@ async function send(request: Request, roomId: string, who: Identity) {
       input.text,
       Date.now(),
       JSON.stringify(attachments),
+      JSON.stringify(Object.fromEntries(tagged.map((p) => [p.handle, p.id]))),
     ),
     ...attachments.map((f) =>
       env.DB.prepare(
@@ -341,8 +352,14 @@ async function send(request: Request, roomId: string, who: Identity) {
     ...agents,
   ]);
   const stored = await message(id, who);
-  await publish(roomId);
-  if (agents.length) await env.CHAT_DISPATCHERS.getByName(roomId).kick(roomId);
+  waitUntil(
+    Promise.all([
+      publish(roomId),
+      ...(agents.length
+        ? [env.CHAT_DISPATCHERS.getByName(roomId).kick(roomId)]
+        : []),
+    ]),
+  );
   return json(
     { message: (await hydrate([stored], who))[0], duplicate: false },
     201,
@@ -436,6 +453,23 @@ async function route(request: Request): Promise<Response> {
     if (who.kind !== "bot") throw new ChatError(403, "Use a bot API token.");
     path = path.replace("/api/v1/", "/api/chat/");
   }
+  if (
+    who.taskRunId &&
+    !(
+      (method === "GET" &&
+        /^\/api\/chat\/(rooms\/[^/]+\/(repositories|connections)|repositories\/[^/]+\/(issues|labels|assignees)(\/\d+(\/comments)?)?)$/.test(
+          path,
+        )) ||
+      (method === "POST" &&
+        /^\/api\/chat\/rooms\/[^/]+\/repositories$/.test(path))
+    )
+  )
+    throw new ChatError(
+      403,
+      "Task credentials can only read repository context and propose repository links.",
+    );
+  const extra = await workbench(request, who, path);
+  if (extra) return extra;
   if (path === "/api/chat/workspace" && method === "GET") {
     human(who);
     const [me, people, rooms] = await Promise.all([
@@ -466,19 +500,31 @@ async function route(request: Request): Promise<Response> {
     const input = z
       .object({
         name: z.string().trim().min(1).max(60),
+        handle: z
+          .string()
+          .regex(/^[a-z][a-z0-9_-]{1,39}$/)
+          .optional(),
         password: z.string().min(12).max(256).optional(),
       })
       .parse(await body(request));
+    const handle = z
+      .string()
+      .regex(/^[a-z][a-z0-9_-]{1,39}$/)
+      .optional()
+      .parse((input as { handle?: string }).handle);
+    const statements = [
+      env.DB.prepare(
+        "UPDATE people SET name=?,handle=COALESCE(?,handle) WHERE id=?",
+      ).bind(input.name, handle || null, who.id),
+    ];
     if (input.password)
-      await env.DB.prepare(
-        "UPDATE people SET name=?,password_hash=? WHERE id=?",
-      )
-        .bind(input.name, await passwordHash(input.password), who.id)
-        .run();
-    else
-      await env.DB.prepare("UPDATE people SET name=? WHERE id=?")
-        .bind(input.name, who.id)
-        .run();
+      statements.push(
+        env.DB.prepare("UPDATE people SET password_hash=? WHERE id=?").bind(
+          await passwordHash(input.password),
+          who.id,
+        ),
+      );
+    await env.DB.batch(statements);
     return json(await person(who.id));
   }
   if (path === "/api/chat/invitations" && method === "POST") {
@@ -785,8 +831,15 @@ async function route(request: Request): Promise<Response> {
         const tagged = await mentions(input.text, m.room_id);
         await env.DB.batch([
           env.DB.prepare(
-            "UPDATE chat_messages SET text=?,edited_at=? WHERE id=?",
-          ).bind(input.text, Date.now(), id),
+            "UPDATE chat_messages SET text=?,edited_at=?,mention_refs=? WHERE id=?",
+          ).bind(
+            input.text,
+            Date.now(),
+            JSON.stringify(
+              Object.fromEntries(tagged.map((p) => [p.handle, p.id])),
+            ),
+            id,
+          ),
           env.DB.prepare(
             "DELETE FROM message_mentions WHERE message_id=?",
           ).bind(id),

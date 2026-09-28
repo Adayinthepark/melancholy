@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { z } from "zod";
+import { jobEnvironment } from "./integrations";
 import {
   authenticate,
   checkOrigin,
@@ -12,7 +13,7 @@ import {
 } from "./auth";
 import type { Attachment, Runtime, Server, Thread } from "../lib/protocol";
 import { handleChat, chatFile } from "./team-api";
-import { verifyPassword, requireRoom } from "./team-auth";
+import { verifyPassword, requireRoom, ChatError } from "./team-auth";
 
 class HttpError extends Error {
   constructor(
@@ -96,7 +97,7 @@ export async function handleApi(request: Request): Promise<Response> {
   try {
     return await route(request);
   } catch (error) {
-    if (error instanceof HttpError)
+    if (error instanceof HttpError || error instanceof ChatError)
       return json({ error: error.message }, error.status);
     if (error instanceof z.ZodError)
       return json(
@@ -130,8 +131,23 @@ async function route(request: Request): Promise<Response> {
   )
     return handleChat(request);
   if (path === "/api/health" && method === "GET")
-    return json({ ok: true, version: "0.2.0" });
+    return json({ ok: true, version: "0.3.0" });
 
+  if (path === "/api/connector/environment" && method === "POST") {
+    const identity = await connectorIdentity(request);
+    if (!identity) throw new HttpError(401, "Invalid connector token.");
+    const input = z
+      .object({ threadId: z.string().uuid(), runId: z.string().uuid() })
+      .parse(await body(request));
+    return json({
+      environment: await jobEnvironment(
+        identity.id,
+        input.threadId,
+        input.runId,
+        url.origin,
+      ),
+    });
+  }
   if (path === "/api/connector" && method === "GET") {
     const identity = await connectorIdentity(request);
     if (!identity) throw new HttpError(401, "Invalid connector token.");
@@ -368,6 +384,23 @@ async function route(request: Request): Promise<Response> {
     return json({ id, token, ...input }, 201);
   }
   const serverId = path.match(/^\/api\/servers\/([a-f0-9-]+)$/)?.[1];
+  if (serverId && method === "PATCH") {
+    await server(serverId);
+    const input = z
+      .object({ name: z.string().trim().min(1).max(60) })
+      .parse(await body(request));
+    await env.DB.batch([
+      env.DB.prepare("UPDATE servers SET name=? WHERE id=?").bind(
+        input.name,
+        serverId,
+      ),
+      env.DB.prepare("UPDATE people SET name=? WHERE server_id=?").bind(
+        input.name,
+        serverId,
+      ),
+    ]);
+    return json({ ok: true });
+  }
   if (serverId && method === "DELETE") {
     await server(serverId);
     await env.DB.prepare("UPDATE people SET active=0 WHERE server_id=?")

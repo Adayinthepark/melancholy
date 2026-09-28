@@ -80,7 +80,6 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { Mark } from "./brand";
 import { Login } from "./login";
 import { ServerSettings } from "./server-settings";
 import { Transcript, formatSize } from "./transcript";
@@ -480,7 +479,6 @@ export function WorkspaceApp() {
   if (!workspace)
     return (
       <main className="loading-page">
-        <Mark />
         {loadError ? (
           <Empty>
             <EmptyHeader>
@@ -509,7 +507,6 @@ export function WorkspaceApp() {
   const sidebar = (
     <>
       <div className="workspace-brand">
-        <Mark />
         <span>melancholy</span>
       </div>
       <div className="workspace-name">

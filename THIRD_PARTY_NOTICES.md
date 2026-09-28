@@ -4,6 +4,8 @@ Project source is MIT licensed unless a file states otherwise.
 
 - UI primitives are derived from [shadcn/ui](https://github.com/shadcn-ui/ui),
   MIT License, copyright shadcn. The components remain in `components/ui`.
+- Inter is copyright The Inter Project Authors and licensed under the SIL Open
+  Font License 1.1. A copy is included in `LICENSES/Inter-OFL.txt`.
 - IBM Plex fonts are copyright IBM Corp. and licensed under the SIL Open Font
   License 1.1. License copies are included in `public/fonts`.
 - The project-local frontend-design skill comes from

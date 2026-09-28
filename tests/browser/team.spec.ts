@@ -199,7 +199,7 @@ test("members collaborate in private channels, threads, DMs and groups", async (
     .getByRole("button", { name: "Open navigation", exact: true })
     .click();
   await expect(
-    page.getByRole("dialog").getByText("melancholy", { exact: true }),
+    page.getByRole("dialog").locator(".workspace-brand"),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   expect(errors).toEqual([]);

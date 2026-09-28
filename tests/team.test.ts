@@ -472,6 +472,7 @@ describe("bots and connected agents", () => {
       name: "",
     });
     await send(owner, id, "first agent turn");
+    await env.CHAT_DISPATCHERS.getByName(id).kick(id);
     const mapping = await env.DB.prepare(
       "SELECT thread_id FROM agent_threads WHERE room_id=?",
     )
@@ -494,6 +495,7 @@ describe("bots and connected agents", () => {
       run_status: "completed",
     });
     await send(owner, id, "second agent turn");
+    await env.CHAT_DISPATCHERS.getByName(id).kick(id);
     const job = await runInDurableObject(
       agent,
       (_instance, state) =>

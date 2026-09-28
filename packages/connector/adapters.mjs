@@ -50,6 +50,19 @@ export class OutputParser {
           data.error?.message ||
           data.message ||
           "Codex could not complete this turn.";
+      if (data.type === "turn.completed" && data.usage) {
+        const u = data.usage;
+        this.onEvent({
+          type: "usage",
+          usage: {
+            inputTokens: u.input_tokens || 0,
+            outputTokens: u.output_tokens || 0,
+            cachedTokens: u.cached_input_tokens || 0,
+            cacheWriteTokens: 0,
+            ...(data.model ? { model: data.model } : {}),
+          },
+        });
+      }
       const item = data.item;
       if (item?.type === "agent_message") {
         this.items.set(item.id, item.text || "");
@@ -132,6 +145,27 @@ export class OutputParser {
             });
         }
       if (data.type === "result") {
+        if (data.usage) {
+          const u = data.usage;
+          this.onEvent({
+            type: "usage",
+            usage: {
+              inputTokens:
+                (u.input_tokens || 0) +
+                (u.cache_read_input_tokens || 0) +
+                (u.cache_creation_input_tokens || 0),
+              outputTokens: u.output_tokens || 0,
+              cachedTokens: u.cache_read_input_tokens || 0,
+              cacheWriteTokens: u.cache_creation_input_tokens || 0,
+              ...(typeof data.total_cost_usd === "number"
+                ? { costUsd: data.total_cost_usd }
+                : {}),
+              ...(Object.keys(data.modelUsage || {}).length === 1
+                ? { model: Object.keys(data.modelUsage)[0] }
+                : {}),
+            },
+          });
+        }
         if (data.is_error)
           this.error =
             data.result ||

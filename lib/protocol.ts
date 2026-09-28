@@ -67,7 +67,16 @@ export type Job = {
   sessionId: string | null;
   attachments: Attachment[];
 };
+export type TokenUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
+  costUsd?: number;
+  model?: string;
+};
 export type AgentEvent =
+  | { type: "usage"; usage: TokenUsage }
   | { type: "started"; sessionId?: string }
   | { type: "text"; text: string }
   | {

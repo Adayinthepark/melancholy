@@ -9,7 +9,8 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
-import { api, post } from "@/lib/client";
+import { encodeMentions, mentionLabel } from "@/lib/mentions";
+import { api } from "@/lib/client";
 import type { Person } from "@/lib/chat";
 import type { Attachment } from "@/lib/protocol";
 export function ChatComposer({
@@ -17,26 +18,25 @@ export function ChatComposer({
   parentId,
   people,
   label,
-  onSent,
+  onSend,
 }: {
   roomId: string;
   parentId?: string;
   people: Person[];
   label: string;
-  onSent: () => Promise<void>;
+  onSend: (draft: {
+    id: string;
+    text: string;
+    attachments: Attachment[];
+    parentId?: string;
+  }) => void;
 }) {
   const [text, setText] = useState(""),
     [files, setFiles] = useState<Attachment[]>([]),
-    [busy, setBusy] = useState(false),
     [uploading, setUploading] = useState(false),
     [mention, setMention] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null),
-    fileInput = useRef<HTMLInputElement>(null),
-    pending = useRef<{
-      id: string;
-      text: string;
-      attachments: string[];
-    } | null>(null);
+    fileInput = useRef<HTMLInputElement>(null);
   function change(value: string) {
     setText(value);
     const match = value
@@ -48,7 +48,7 @@ export function ChatComposer({
     const cursor = input.current?.selectionStart ?? text.length;
     const before = text
       .slice(0, cursor)
-      .replace(/@[\w-]*$/, "@" + p.handle + " ");
+      .replace(/@[\w-]*$/, "@" + mentionLabel(p, people) + " ");
     setText(before + text.slice(cursor));
     setMention(null);
     setTimeout(() => {
@@ -56,31 +56,18 @@ export function ChatComposer({
       input.current?.setSelectionRange(before.length, before.length);
     }, 0);
   }
-  async function send() {
-    if (busy || uploading || (!text.trim() && !files.length)) return;
-    setBusy(true);
-    const value = { text: text.trim(), attachments: files.map((f) => f.id) };
-    if (
-      !pending.current ||
-      pending.current.text !== value.text ||
-      pending.current.attachments.join() !== value.attachments.join()
-    )
-      pending.current = { id: crypto.randomUUID(), ...value };
-    try {
-      await post("/chat/rooms/" + roomId + "/messages", {
-        ...pending.current,
-        parentId,
-      });
-      setText("");
-      setFiles([]);
-      setMention(null);
-      pending.current = null;
-      await onSent();
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  function send() {
+    if (uploading || (!text.trim() && !files.length)) return;
+    onSend({
+      id: crypto.randomUUID(),
+      text: encodeMentions(text.trim(), people),
+      attachments: files,
+      parentId,
+    });
+    setText("");
+    setFiles([]);
+    setMention(null);
+    input.current?.focus();
   }
   async function upload(selected: FileList | null) {
     if (!selected) return;
@@ -174,7 +161,6 @@ export function ChatComposer({
           aria-label={parentId ? "Thread reply" : "Message"}
           placeholder={label}
           value={text}
-          disabled={busy}
           rows={2}
           onChange={(e) => change(e.target.value)}
           onKeyDown={(e) => {
@@ -223,7 +209,7 @@ export function ChatComposer({
             className="ml-auto"
             size="icon-sm"
             aria-label={parentId ? "Send reply" : "Send message"}
-            disabled={busy || uploading || (!text.trim() && !files.length)}
+            disabled={uploading || (!text.trim() && !files.length)}
             onClick={() => void send()}
           >
             <ArrowUp />

@@ -16,6 +16,7 @@ import { createInterface } from "node:readline";
 import { createHash } from "node:crypto";
 import WebSocket from "ws";
 import { commandFor, OutputParser } from "./adapters.mjs";
+import { agentEnvironment, redactor } from "./environment.mjs";
 import { killTree } from "./process.mjs";
 
 const { values: flags } = parseArgs({
@@ -159,6 +160,7 @@ async function run(job) {
   if (record.status === "cancelled") return;
   record.status = "running";
   save();
+  let redact = (value) => value;
   try {
     await emit(job.id, { type: "started" });
     if (record.status === "cancelled") return;
@@ -166,8 +168,26 @@ async function run(job) {
     if (record.status === "cancelled" || stopping) return;
     const { command, args } = commandFor(runtime, job.sessionId, permission);
     // Connector credentials never enter the agent's environment.
-    const childEnv = { ...process.env };
-    delete childEnv.MELANCHOLY_TOKEN;
+    const environmentResponse = await fetch(
+      new URL("/api/connector/environment", base),
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ threadId: job.threadId, runId: job.id }),
+        signal: AbortSignal.timeout(30000),
+      },
+    );
+    if (!environmentResponse.ok)
+      throw new Error(
+        `Task credentials unavailable (${environmentResponse.status}).`,
+      );
+    const { environment } = await environmentResponse.json();
+    if (record.status === "cancelled" || stopping) return;
+    const childEnv = agentEnvironment(process.env, environment);
+    redact = redactor(environment);
     const child = spawn(command, args, {
       cwd,
       env: childEnv,
@@ -187,7 +207,8 @@ async function run(job) {
         void emit(job.id, { type: "text", text: text.slice(0, 500000) });
       }
     };
-    const parser = new OutputParser(runtime, (event) => {
+    const parser = new OutputParser(runtime, (rawEvent) => {
+      const event = redact(rawEvent);
       if (event.type === "text") {
         latestText = event.text;
         if (!flushTimer) flushTimer = setTimeout(flush, 250);
@@ -205,7 +226,7 @@ async function run(job) {
       }
     });
     child.stderr.on("data", (chunk) => {
-      stderr = (stderr + chunk.toString()).slice(-4000);
+      stderr = redact(stderr + chunk.toString()).slice(-4000);
     });
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -244,10 +265,8 @@ async function run(job) {
       record.status = "failed";
       await emit(job.id, {
         type: "failed",
-        error: (
-          parser.error ||
-          stderr ||
-          `${runtime} exited with code ${code}.`
+        error: redact(
+          parser.error || stderr || `${runtime} exited with code ${code}.`,
         ).slice(-2000),
       });
     } else {
@@ -264,7 +283,7 @@ async function run(job) {
     save();
     await emit(job.id, {
       type: "failed",
-      error: String(error.message || error).slice(0, 2000),
+      error: redact(String(error.message || error)).slice(0, 2000),
     });
   }
 }

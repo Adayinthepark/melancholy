@@ -7,7 +7,9 @@ it("removes standalone storage without changing current agent mappings or pendin
     MIGRATION_DB: D1Database;
     TEST_MIGRATIONS: D1Migration[];
   };
-  await applyD1Migrations(db, migrations.slice(0, -1));
+  const retirement = migrations.findIndex((m) => m.name.startsWith("0007_"));
+  expect(retirement).toBeGreaterThan(0);
+  await applyD1Migrations(db, migrations.slice(0, retirement));
   await db.batch([
     db.prepare(
       "INSERT INTO servers(id,name,runtime,token_hash,created_at) VALUES ('server','server','codex','hash',1)",

@@ -24,10 +24,12 @@ workspace data stays in your Cloudflare account.
 - Multiple repositories per channel; GitHub Issues, comments and work threads.
 - Per-thread auto trigger, focused thread pages and reported token usage.
 - Optimistic sending with retry; shadcn/ui, Inter and light/dark themes.
+- Installable PWA with private Web Push notifications and per-device opt-in.
 
 This is a small workspace application, not an implementation of Slack's API.
-Calls, native push, Slack imports, email delivery, SSO and enterprise audit
-controls are outside the current release. Unread notifications are in-app.
+Calls, native clients, Slack imports, email delivery, SSO and enterprise audit
+controls are outside the current release. Web Push works through the installed
+PWA on iOS 16.4+ and supported desktop/Android browsers; see the [setup guide](docs/pwa.md).
 
 ## Stack
 
@@ -103,6 +105,9 @@ installation. Forks must replace its account, domain and resource identifiers.
    Back up that key separately from D1; replacing it makes saved tokens unreadable.
 6. Run `npm run deploy`.
 
+For optional Web Push, generate per-installation VAPID secrets and enable
+notifications on each device. See [PWA installation and push setup](docs/pwa.md).
+
 Generate a key with `openssl rand -hex 32`. Never commit it or connector config.
 Owner sign-ins and channel agent sessions persist across upgrades.
 The retired single-owner workspace and its standalone history have been removed.
@@ -139,4 +144,5 @@ bundled skills.
 ## Guides
 
 - [GitHub and Cloudflare credential setup (中文)](docs/credentials.md)
+- [PWA installation and Web Push (中文)](docs/pwa.md)
 - [iOS client and push gateway proposal (中文)](docs/ios-client.md) — design only; not shipped.

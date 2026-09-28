@@ -1,5 +1,6 @@
 "use client";
 import { SettingsSkeleton } from "./loading-states";
+import { DeviceSettings } from "./device-settings";
 import { useEffect, useState } from "react";
 import { Copy, Plus, Server, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -251,6 +252,7 @@ export function TeamSettings({
           </FieldGroup>
         </form>
       )}
+      {tab === "profile" && <DeviceSettings />}
       {tab === "members" && (
         <div className="settings-section">
           {admin && (

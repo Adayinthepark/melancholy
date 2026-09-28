@@ -2059,3 +2059,17 @@
   line-height: 1.65;
   color: var(--muted-foreground);
 }
+.device-settings {
+  margin-top: 24px;
+}
+.device-settings > [data-slot="separator"] {
+  margin-bottom: 24px;
+}
+.device-settings button {
+  width: fit-content;
+}
+.device-status {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}

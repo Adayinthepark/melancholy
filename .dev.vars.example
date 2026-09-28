@@ -2,3 +2,8 @@ WORKSPACE_KEY=replace-with-a-random-key-at-least-32-characters-long
 
 # Replace with a separate random 32-byte hex key before deploying.
 INTEGRATIONS_KEY=0000000000000000000000000000000000000000000000000000000000000000
+
+# Optional Web Push: generate separate local keys with scripts/generate-push-keys.mjs.
+# VAPID_PUBLIC_KEY=
+# VAPID_PRIVATE_KEY=
+# VAPID_SUBJECT=https://your-workspace.example

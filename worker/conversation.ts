@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { queuePush, drainPush } from "./push";
 import { publish } from "./team-store";
 import type {
   Activity,
@@ -363,7 +364,9 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
         run.event_seq,
         JSON.stringify(activity),
       ),
+      queuePush(this.env.DB, message.id),
     ]);
+    this.ctx.waitUntil(drainPush(this.env));
     this.ctx.storage.sql.exec(
       "DELETE FROM chat_dirty WHERE run_id=? AND EXISTS(SELECT 1 FROM runs WHERE id=? AND event_seq=?)",
       runId,

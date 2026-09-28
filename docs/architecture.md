@@ -64,12 +64,28 @@ remain accessible. It is not a physical purge of model-provider or CLI history.
 Reactions are unique per message/person/emoji. Read cursors only move forward.
 Unread and mention counts exclude deleted messages and a person's own messages.
 Counts cover the entire conversation, including thread replies. Reading the
-active conversation marks it read; there is no native push in this release.
+active conversation marks it read. Optional Web Push notifies subscribed devices
+about DMs, mentions, participated threads and terminal agent results.
 
 Each member's Inbox Durable Object holds hibernating WebSockets. It sends only
 invalidation identifiers; the browser fetches current data through authorized
 HTTP endpoints. Notifications recheck session validity. Reconnect and periodic
 refresh recover from missed invalidations. Ping/pong uses automatic responses.
+
+Web Push subscriptions are bound to one authenticated browser session. Message
+and terminal agent projection transactions insert per-subscription delivery rows
+into D1. Immediate delivery and Cron recovery share atomic expiring claims;
+before sending they recheck membership, active identity, session expiry, message
+deletion and read position. Delivery uses RFC 8291 encryption and VAPID keys in
+Worker secrets, with an explicit push-host allowlist and no redirects. Generic
+payloads contain no chat text. Session deletion cascades to subscriptions and
+queued deliveries. Expired subscriptions and old delivery records are pruned.
+Web Push is best effort; retries can overlap an uncertain provider acceptance,
+so stable notification tags also merge duplicate events on the device.
+
+The PWA service worker caches only the public offline page and app icon. Private
+HTML, APIs, attachments and credentials are never written into Cache Storage.
+Offline navigation presents a reconnect screen rather than stale workspace data.
 
 History is paginated in 100-message pages. Search uses a trigram FTS5 index for
 queries of at least three characters and a substring scan for shorter queries,

@@ -1,4 +1,5 @@
 import { workspaceInfo } from "./workspace-settings";
+import { queuePush, drainPush } from "./push";
 import { env, waitUntil } from "cloudflare:workers";
 import { z } from "zod";
 import { workbench } from "./workbench-api";
@@ -338,11 +339,13 @@ async function send(request: Request, roomId: string, who: Identity) {
     ),
     event(roomId, id, "message.created"),
     ...agents,
+    queuePush(env.DB, id),
   ]);
   const stored = await message(id, who);
   waitUntil(
     Promise.all([
       publish(roomId),
+      drainPush(env),
       ...(agents.length
         ? [env.CHAT_DISPATCHERS.getByName(roomId).kick(roomId)]
         : []),

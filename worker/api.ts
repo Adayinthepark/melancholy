@@ -15,6 +15,7 @@ import {
 import type { Server } from "../lib/protocol";
 import { handleChat, chatFile } from "./team-api";
 import { verifyPassword, ChatError } from "./team-auth";
+import { handlePush } from "./push";
 
 class HttpError extends Error {
   constructor(
@@ -249,6 +250,10 @@ async function route(request: Request): Promise<Response> {
       "Set-Cookie": sessionCookie(request, "", 0),
     });
   }
+  const pushResponse = await handlePush(request, env, session, () =>
+    body(request),
+  );
+  if (pushResponse) return pushResponse;
   if (path === "/api/login-links" && method === "POST") {
     const ticket = secret();
     const expires = Date.now() + 86400000;

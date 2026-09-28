@@ -46,7 +46,9 @@ full conversation area. Composer and member controls remain reachable.
 ## Review against the brief
 
 No marketing hero, feature grid, gradient, sparkle icon, fictional activity,
-or greetings. The sidebar uses the workspace name in small type; no large brand mark. The visual emphasis belongs to the content and the current action.
+or greetings. The sidebar uses the workspace name in small type; no large brand mark. The supplied wave SVG appears at 72 px beside the workspace
+name and 90 px on the login page, with its original proportions and a neutral
+light/dark fill. The source artwork is in `public/logo.svg`. The visual emphasis belongs to the content and the current action.
 Agent details appear where they explain execution; infrastructure details stay
 in server settings and documentation. Empty screens offer the next action.
 

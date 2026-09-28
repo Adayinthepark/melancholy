@@ -143,14 +143,28 @@
   align-items: center;
   gap: 9px;
   padding: 0 8px;
-  font-size: 20px;
-  letter-spacing: -0.9px;
+  font-size: 15px;
+  letter-spacing: -0.2px;
   font-weight: 500;
   color: var(--foreground);
 }
-.workspace-brand svg {
-  width: 27px;
-  height: 27px;
+.brand-mark {
+  width: 72px;
+  height: auto;
+  flex-shrink: 0;
+  color: #262625;
+}
+.dark .brand-mark {
+  color: #e5e5e5;
+}
+.workspace-brand > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-brand .brand-mark {
+  margin-left: auto;
 }
 .workspace-name {
   display: flex;
@@ -840,9 +854,8 @@
   letter-spacing: -0.2px;
   font-weight: 500;
 }
-.login-wordmark svg {
-  width: 28px;
-  height: 28px;
+.login-wordmark .brand-mark {
+  width: 90px;
 }
 .login-form {
   width: 100%;

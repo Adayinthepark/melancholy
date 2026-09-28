@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { Mark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -44,8 +45,8 @@ export function Login({ onLogin }: { onLogin: () => void }) {
   }, []);
   return (
     <main className="login-page">
-      <a className="login-wordmark" href="/">
-        melancholy
+      <a className="login-wordmark" href="/" aria-label="melancholy home">
+        <Mark />
       </a>
       <form
         className="login-form"

@@ -26,6 +26,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Mark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -508,6 +509,7 @@ export function WorkspaceApp() {
     <>
       <div className="workspace-brand">
         <span>melancholy</span>
+        <Mark />
       </div>
       <div className="workspace-name">
         {workspace.name}

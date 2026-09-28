@@ -21,6 +21,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Mark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -545,7 +546,8 @@ export function TeamWorkspaceApp({
   const sidebar = (
     <>
       <a className="workspace-brand" href="/">
-        {workspace.name}
+        <span>{workspace.name}</span>
+        <Mark />
       </a>
       <Button
         className="team-new-message"

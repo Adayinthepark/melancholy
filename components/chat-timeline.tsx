@@ -194,7 +194,7 @@ export function ChatRow({
     >
       <Message align="start">
         <PersonAvatar person={m.author || me} className="chat-avatar" />
-        <MessageContent>
+        <MessageContent className="gap-0.5">
           <MessageHeader className="chat-message-header">
             <strong>{m.author?.name || "Former member"}</strong>
             {m.author?.kind === "bot" && <Badge variant="outline">bot</Badge>}

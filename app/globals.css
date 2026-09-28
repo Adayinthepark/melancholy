@@ -1262,7 +1262,7 @@
   align-items: baseline;
   gap: 8px;
   font-size: 13px;
-  margin-bottom: 3px;
+  margin-bottom: 0;
   flex-wrap: wrap;
 }
 .chat-message-header strong {

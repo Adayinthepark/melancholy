@@ -7,8 +7,6 @@ share one interface. Connect a server running Codex or Claude Code and talk to
 its bot in a channel or a direct message. Agent sessions stay on that server;
 workspace data stays in your Cloudflare account.
 
-[async.love](https://async.love) is the owner's private installation.
-
 ## Features
 
 - Invite-only member accounts, editable usernames and profile images.

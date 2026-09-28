@@ -33,6 +33,8 @@ melancholy 可以安装为 PWA。每个自部署工作区直接向浏览器的�
 
 需要 HTTPS（本机 localhost 仅用于开发）。当前支持 Apple `*.push.apple.com`、Google `fcm.googleapis.com`、Mozilla `*.push.services.mozilla.com` 推送端点。端点有明确白名单，客户端不能让 Worker 请求任意地址，重定向不会跟随。
 
+也支持 Chromium 非稳定渠道使用的 `jmt17.google.com/fcm/send/`；依据 [Chromium 官方端点定义](https://github.com/chromium/chromium/blob/main/components/push_messaging/push_messaging_constants.cc) 单独限定主机和路径。
+
 1. 应用数据库迁移，包括 `0008_web_push.sql`：
 
    ```sh

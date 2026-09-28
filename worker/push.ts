@@ -25,6 +25,9 @@ export function allowedPushEndpoint(value: string) {
       !u.port &&
       !u.hash &&
       (u.hostname === "fcm.googleapis.com" ||
+        // Chromium's non-stable channel endpoint (push_messaging_constants.cc).
+        (u.hostname === "jmt17.google.com" &&
+          u.pathname.startsWith("/fcm/send/")) ||
         /^[a-z0-9-]+\.push\.services\.mozilla\.com$/.test(u.hostname) ||
         /^[a-z0-9.-]+\.push\.apple\.com$/.test(u.hostname))
     );

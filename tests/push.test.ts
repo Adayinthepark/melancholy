@@ -177,6 +177,10 @@ it("requires a member session and same-origin mutations; rejects unsafe push end
       "https://updates.push.services.mozilla.com/wpush/v2/test",
     ),
   ).toBe(true);
+  expect(allowedPushEndpoint("https://jmt17.google.com/fcm/send/test")).toBe(
+    true,
+  );
+  expect(allowedPushEndpoint("https://jmt17.google.com/other")).toBe(false);
   expect(
     (
       await request("/api/push/subscriptions", f.cookie, "POST", {

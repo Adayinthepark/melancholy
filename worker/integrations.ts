@@ -26,31 +26,63 @@ export async function providerRequest(
   method = "GET",
   body?: unknown,
 ): Promise<unknown> {
+  const label = provider === "github" ? "GitHub" : "Cloudflare";
   const base =
     provider === "github"
       ? "https://api.github.com"
       : "https://api.cloudflare.com/client/v4";
-  const response = await fetch(base + path, {
-    method,
-    redirect: "error",
-    signal: AbortSignal.timeout(20000),
-    headers: {
-      Authorization: "Bearer " + token,
-      Accept: "application/vnd.github+json",
-      "User-Agent": "melancholy",
-      "Content-Type": "application/json",
-      ...(provider === "github"
-        ? { "X-GitHub-Api-Version": "2022-11-28" }
-        : {}),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(base + path, {
+      method,
+      // Workers accepts manual/follow. Never forward credentials to a redirect.
+      redirect: "manual",
+      signal: AbortSignal.timeout(20000),
+      headers: {
+        Authorization: "Bearer " + token,
+        Accept:
+          provider === "github"
+            ? "application/vnd.github+json"
+            : "application/json",
+        "User-Agent": "melancholy",
+        "Content-Type": "application/json",
+        ...(provider === "github"
+          ? { "X-GitHub-Api-Version": "2022-11-28" }
+          : {}),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  } catch (error) {
+    const timeout =
+      error instanceof Error &&
+      ["TimeoutError", "AbortError"].includes(error.name);
+    throw new ChatError(
+      timeout ? 504 : 502,
+      timeout
+        ? `${label} verification or API request timed out. Try again.`
+        : `${label} could not be reached. Try again.`,
+    );
+  }
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel();
+    throw new ChatError(
+      502,
+      `${label} redirected this request. The credential was not forwarded. Check the connection or repository address.`,
+    );
+  }
   if (!response.ok)
     throw new ChatError(
       response.status === 404 ? 404 : response.status === 429 ? 429 : 502,
-      `${provider === "github" ? "GitHub" : "Cloudflare"} returned ${response.status}. Check this connection's access and permissions.`,
+      `${label} returned ${response.status}. Check this connection's access and permissions.`,
     );
-  return response.json();
+  try {
+    return await response.json();
+  } catch {
+    throw new ChatError(
+      502,
+      `${label} returned an invalid response. Try again.`,
+    );
+  }
 }
 export async function github<T>(
   id: string,

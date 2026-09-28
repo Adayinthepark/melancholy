@@ -151,6 +151,8 @@ function providerMock() {
   return vi
     .spyOn(globalThis, "fetch")
     .mockImplementation(async (input, init) => {
+      // Exercise Workers' real Request validation even with provider responses mocked.
+      new Request(input, init);
       const url = String(input);
       if (url === "https://api.github.com/user")
         return Response.json({ login: "octo" });
@@ -303,6 +305,130 @@ describe("workbench identity and mentions", () => {
   });
 });
 describe("connections, GitHub and task credentials", () => {
+  it("creates and replaces a Cloudflare credential using native Workers requests", async () => {
+    const mock = providerMock();
+    const owner = await login();
+    const accountId = "a".repeat(32);
+    const payload = {
+      provider: "cloudflare",
+      name: "Cloudflare account",
+      accountId,
+      token: "cloudflare-initial-private-token",
+    };
+    const created = await request(
+      "/api/chat/connections",
+      owner,
+      "POST",
+      payload,
+    );
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const initial = await env.DB.prepare(
+      "SELECT id,secret,account_id FROM integrations WHERE id=?",
+    )
+      .bind(id)
+      .first<{ id: string; secret: string; account_id: string }>();
+    expect(initial?.account_id).toBe(accountId);
+    expect(initial?.secret).not.toContain(payload.token);
+    expect(await unseal(initial!)).toBe(payload.token);
+    const replaced = await request(
+      `/api/chat/connections/${id}`,
+      owner,
+      "PUT",
+      {
+        ...payload,
+        token: "cloudflare-replacement-private-token",
+      },
+    );
+    expect(replaced.status).toBe(200);
+    const next = await env.DB.prepare(
+      "SELECT id,secret FROM integrations WHERE id=?",
+    )
+      .bind(id)
+      .first<{ id: string; secret: string }>();
+    expect(await unseal(next!)).toBe("cloudflare-replacement-private-token");
+    const listing = await (
+      await request("/api/chat/connections", owner)
+    ).text();
+    expect(listing).not.toContain("private-token");
+    expect(mock).toHaveBeenCalledTimes(2);
+    for (const [, init] of mock.mock.calls)
+      expect(init?.redirect).toBe("manual");
+  });
+  it.each(["github", "cloudflare"])(
+    "rejects %s redirects without changing a saved credential",
+    async (provider) => {
+      const mock = providerMock();
+      const owner = await login(),
+        id = await connection(owner, provider);
+      mock.mockClear();
+      mock.mockImplementation(async (input, init) => {
+        new Request(input, init);
+        expect(init?.redirect).toBe("manual");
+        return new Response(null, {
+          status: 307,
+          headers: { Location: "https://other-host.test/collect" },
+        });
+      });
+      const replaced = await request(
+        `/api/chat/connections/${id}`,
+        owner,
+        "PUT",
+        {
+          provider,
+          name: "Replacement",
+          token: "replacement-private-token",
+        },
+      );
+      expect(replaced.status).toBe(502);
+      expect(await replaced.text()).toContain("redirected");
+      expect(mock).toHaveBeenCalledTimes(1);
+      const row = await env.DB.prepare(
+        "SELECT id,secret FROM integrations WHERE id=?",
+      )
+        .bind(id)
+        .first<{ id: string; secret: string }>();
+      expect(await unseal(row!)).toBe(provider + "-test-token-secret");
+    },
+  );
+  it.each([
+    { kind: "network", status: 502, message: "could not be reached" },
+    { kind: "timeout", status: 504, message: "timed out" },
+    { kind: "json", status: 502, message: "invalid response" },
+    { kind: "permission", status: 502, message: "returned 403" },
+  ])(
+    "returns a safe, actionable error for a provider $kind failure",
+    async ({ kind, status, message }) => {
+      const owner = await login();
+      const before = await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM integrations",
+      ).first("count");
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        new Request(input, init);
+        if (kind === "timeout")
+          throw new DOMException("private diagnostic data", "TimeoutError");
+        if (kind === "network") throw new Error("private diagnostic data");
+        return new Response("private diagnostic data", {
+          status: kind === "permission" ? 403 : 200,
+        });
+      });
+      const response = await request("/api/chat/connections", owner, "POST", {
+        provider: "cloudflare",
+        name: "Connection",
+        token: "private-token-do-not-return",
+      });
+      expect(response.status).toBe(status);
+      const text = await response.text();
+      expect(text).toContain("Cloudflare");
+      expect(text).toContain(message);
+      expect(text).not.toContain("private");
+      expect(
+        await env.DB.prepare(
+          "SELECT COUNT(*) AS count FROM integrations",
+        ).first("count"),
+      ).toBe(before);
+    },
+  );
   it("encrypts tokens, binds ciphertext to its record and returns metadata only", async () => {
     providerMock();
     const owner = await login(),

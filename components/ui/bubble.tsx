@@ -104,18 +104,26 @@ const bubbleReactionsVariants = cva(
 function BubbleReactions({
   side = "bottom",
   align = "end",
+  layout = "floating",
   className,
   ...props
 }: React.ComponentProps<"div"> & {
   align?: "start" | "end";
   side?: "top" | "bottom";
+  layout?: "floating" | "inline";
 }) {
   return (
     <div
       data-slot="bubble-reactions"
       data-align={align}
       data-side={side}
-      className={cn(bubbleReactionsVariants({ side, align }), className)}
+      data-layout={layout}
+      className={cn(
+        layout === "inline"
+          ? "flex w-fit max-w-full min-w-0 flex-wrap items-center gap-1"
+          : bubbleReactionsVariants({ side, align }),
+        className,
+      )}
       {...props}
     />
   );

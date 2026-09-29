@@ -343,7 +343,11 @@ export function ChatRow({
               )}
             </BubbleContent>
             {!!m.reactions.length && !m.deleted_at && (
-              <BubbleReactions className="chat-reactions" align="start">
+              <BubbleReactions
+                className="chat-reactions"
+                align="start"
+                layout="inline"
+              >
                 {m.reactions.map((r) => (
                   <Button
                     key={r.emoji}

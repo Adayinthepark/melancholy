@@ -887,6 +887,12 @@
   max-width: 900px;
   margin-inline: auto;
 }
+/* Let the active row's toolbar cross its boundary without disabling offscreen
+   rendering optimizations for the rest of the conversation. */
+.chat-message-list
+  > [data-slot="message-scroller-item"]:is(:hover, :focus-within) {
+  content-visibility: visible;
+}
 .chat-row {
   position: relative;
   padding: 10px 24px;
@@ -976,16 +982,7 @@
   pointer-events: auto;
 }
 .chat-reactions {
-  position: static !important;
-  transform: none !important;
-  translate: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-  padding: 4px 0 0 !important;
-  gap: 5px !important;
-  justify-content: flex-start !important;
-  flex-wrap: wrap;
+  gap: 5px;
 }
 .chat-reactions button {
   font-size: 12px;

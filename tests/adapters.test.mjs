@@ -538,3 +538,55 @@ test("interaction protocol fields survive credential redaction", () => {
     "answered",
   );
 });
+
+test("Codex resume usage replay becomes a baseline, not another billable turn", () => {
+  const { session, events } = interactive("codex", "thread");
+  const prior = {
+    inputTokens: 100,
+    outputTokens: 20,
+    cachedInputTokens: 80,
+    cacheWriteInputTokens: 5,
+  };
+  session.accept({
+    method: "thread/tokenUsage/updated",
+    params: {
+      threadId: "thread",
+      turnId: "previous",
+      tokenUsage: { total: prior, last: prior },
+    },
+  });
+  assert.equal(events.filter((e) => e.type === "usage").length, 0);
+  session.accept({
+    method: "turn/started",
+    params: { turn: { id: "current" } },
+  });
+  const current = {
+    inputTokens: 140,
+    outputTokens: 30,
+    cachedInputTokens: 110,
+    cacheWriteInputTokens: 10,
+  };
+  const last = {
+    inputTokens: 40,
+    outputTokens: 10,
+    cachedInputTokens: 30,
+    cacheWriteInputTokens: 5,
+  };
+  session.accept({
+    method: "thread/tokenUsage/updated",
+    params: {
+      threadId: "thread",
+      turnId: "current",
+      tokenUsage: { total: current, last },
+    },
+  });
+  assert.deepEqual(events.at(-1), {
+    type: "usage",
+    usage: {
+      inputTokens: 40,
+      outputTokens: 10,
+      cachedTokens: 30,
+      cacheWriteTokens: 5,
+    },
+  });
+});

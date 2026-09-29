@@ -371,6 +371,12 @@ export class InteractiveSession {
       const total = p.tokenUsage?.total,
         last = p.tokenUsage?.last;
       if (total && last) {
+        // Resume first replays the previous turn's counters, before turn/started.
+        // They establish the baseline and are not usage by this new job.
+        if (!this.turnId || (p.turnId && p.turnId !== this.turnId)) {
+          this.usageBase = { ...total };
+          return;
+        }
         // Thread counters span resumed turns. Subtract the prior turn's baseline.
         if (!this.usageBase)
           this.usageBase = Object.fromEntries(
@@ -382,7 +388,7 @@ export class InteractiveSession {
             ].map((k) => [k, Math.max(0, (total[k] || 0) - (last[k] || 0))]),
           );
         const delta = (key) =>
-          Math.max(0, (total[key] || 0) - this.usageBase[key]);
+          Math.max(0, (total[key] || 0) - (this.usageBase[key] || 0));
         this.emit({
           type: "usage",
           usage: {

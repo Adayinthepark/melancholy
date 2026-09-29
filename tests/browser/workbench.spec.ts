@@ -39,7 +39,8 @@ test("optimistic sends appear immediately in italics and retry with the same mes
   const row = page.locator(".chat-row").filter({ hasText: "Pending message" });
   await expect(row).toBeVisible();
   await expect(row.locator(".markdown")).toHaveCSS("font-style", "italic");
-  await expect(row).toContainText("Sending");
+  await expect(row).not.toContainText("Sending");
+  await expect(page.locator(".agent-progress")).not.toContainText("Sending");
   release();
   await row.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(row).not.toContainText("Sending");

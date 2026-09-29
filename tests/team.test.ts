@@ -381,6 +381,118 @@ describe("messages, mentions and history", () => {
   });
 });
 describe("bots and connected agents", () => {
+  it("defaults a mentioned agent's new topic to auto trigger and preserves an explicit Off", async () => {
+    const owner = await login();
+    const server = (await (
+      await request("/api/servers", owner, "POST", {
+        name: "Topic agent",
+        runtime: "codex",
+      })
+    ).json()) as { id: string };
+    const id = await create(owner, { members: [server.id] });
+    await request(`/api/chat/rooms/${id}/members`, owner, "POST", {
+      personId: server.id,
+    });
+    const root = await send(owner, id, `<@${server.id}> Investigate this`);
+    const preferences = async () =>
+      (await request(`/api/chat/threads/${root.id}/preferences`, owner)).json();
+    expect(await preferences()).toEqual({ bot_id: server.id });
+    const followup = await send(owner, id, "Continue investigating", root.id);
+    expect(followup.agent_requests?.map((r) => r.bot_id)).toEqual([server.id]);
+    const mappings = await env.DB.prepare(
+      "SELECT DISTINCT thread_id FROM agent_requests WHERE message_id IN (?,?)",
+    )
+      .bind(root.id, followup.id)
+      .all();
+    expect(mappings.results).toHaveLength(1);
+    await request(`/api/chat/threads/${root.id}/preferences`, owner, "PUT", {
+      botId: null,
+    });
+    const duplicate = await request(
+      `/api/chat/rooms/${id}/messages`,
+      owner,
+      "POST",
+      {
+        id: root.id,
+        text: root.text,
+      },
+    );
+    expect(duplicate.status).toBe(200);
+    expect(await preferences()).toEqual({ bot_id: null });
+    const mentioned = await send(
+      owner,
+      id,
+      `<@${server.id}> One more check`,
+      root.id,
+    );
+    expect(mentioned.agent_requests?.map((r) => r.bot_id)).toEqual([server.id]);
+    expect(await preferences()).toEqual({ bot_id: null });
+    expect(
+      (await send(owner, id, "Just a note", root.id)).agent_requests,
+    ).toEqual([]);
+  });
+
+  it("leaves ambiguous topics and ordinary bot mentions without an automatic agent", async () => {
+    const owner = await login();
+    const agents: string[] = [];
+    for (const name of ["First topic agent", "Second topic agent"]) {
+      const server = (await (
+        await request("/api/servers", owner, "POST", { name, runtime: "codex" })
+      ).json()) as { id: string };
+      agents.push(server.id);
+    }
+    const bot = (await (
+      await request("/api/chat/bots", owner, "POST", {
+        name: "Notification bot",
+        handle: "notify" + crypto.randomUUID().slice(0, 8),
+      })
+    ).json()) as { id: string };
+    const id = await create(owner);
+    for (const personId of [...agents, bot.id])
+      await request(`/api/chat/rooms/${id}/members`, owner, "POST", {
+        personId,
+      });
+    for (const text of [
+      "Human topic",
+      `<@${bot.id}> Hello`,
+      agents.map((id) => `<@${id}>`).join(" "),
+    ]) {
+      const root = await send(owner, id, text);
+      expect(
+        await (
+          await request(`/api/chat/threads/${root.id}/preferences`, owner)
+        ).json(),
+      ).toEqual({ bot_id: null });
+      expect(
+        (await send(owner, id, "Follow up", root.id)).agent_requests,
+      ).toEqual([]);
+    }
+    const credential = (await (
+      await request("/api/chat/tokens", owner, "POST", {
+        botId: bot.id,
+        kind: "api",
+        roomId: id,
+      })
+    ).json()) as { token: string };
+    const posted = await request(
+      `/api/v1/rooms/${id}/messages`,
+      "",
+      "POST",
+      {
+        text: `<@${agents[0]}> Bot message`,
+      },
+      credential.token,
+    );
+    expect(posted.status).toBe(201);
+    const { message } = (await posted.json()) as { message: TeamMessage };
+    expect(message.agent_requests).toEqual([]);
+    expect(
+      await (
+        await request(`/api/chat/threads/${message.id}/preferences`, owner)
+      ).json(),
+    ).toEqual({ bot_id: null });
+  });
+
   it("scopes bot API tokens and webhooks, prevents impersonation and supports revocation", async () => {
     const owner = await login(),
       id = await create(owner, { private: true }),

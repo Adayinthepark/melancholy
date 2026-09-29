@@ -129,7 +129,6 @@ export function AgentProgress({
   const active = [...items].filter(([, item]) =>
     isAgentActive(item.request.status),
   );
-  const sending = messages.some((m) => m.delivery === "sending");
   return (
     <div
       className="agent-progress"
@@ -140,12 +139,6 @@ export function AgentProgress({
       {active.map(([id, item]) => (
         <AgentStatus key={id} {...item} onChange={onChange} />
       ))}
-      {sending && (
-        <div className="agent-progress-row">
-          <Loader2 aria-hidden="true" className="motion-safe:animate-spin" />
-          <span>Sending message…</span>
-        </div>
-      )}
     </div>
   );
 }

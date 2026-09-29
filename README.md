@@ -89,8 +89,10 @@ In **Workspace settings → Servers**, create a server and
 follow the connector instructions. Add its bot through a channel's member
 settings, then `@mention` its username. In a direct message with that bot, each
 message starts an agent turn. Channel replies continue the CLI session for
-that thread and bot. Enable **Auto trigger** inside a thread to select the bot that
-receives subsequent human replies without another mention. Use the expand
+that thread and bot. Starting a topic with exactly one executable agent mention
+automatically selects that agent for **Auto trigger**, so subsequent human replies
+need no further mention. Change the agent or choose **Off** inside the thread;
+mentioning multiple agents leaves the choice to you. Use the expand
 button for a standalone `/thread/:id` page.
 
 Only the owner can add bots to conversations. Members of those conversations
@@ -160,3 +162,4 @@ bundled skills.
 - [GitHub and Cloudflare credential setup (中文)](docs/credentials.md)
 - [PWA installation and Web Push (中文)](docs/pwa.md)
 - [iOS client and push gateway proposal (中文)](docs/ios-client.md) — design only; not shipped.
+- [Simplified installation and release updates (中文)](docs/deployment-updates.md) — design proposal; not shipped.

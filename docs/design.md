@@ -48,7 +48,7 @@ with a subtle shadow and circular send control. Preserve flat chronological
 rows for people and agents. Unread conversations use weight and a small marker; mention counts appear
 beside their names. A thread opens in a side pane while the channel stays mounted.
 Threads also have a standalone page with a centered conversation column.
-Pending messages appear immediately in italic with a sending label; failures
+Pending messages appear immediately in italic without a sending label; failures
 keep the message and expose Retry.
 On a phone, navigation becomes a dismissible drawer and the thread uses the
 full conversation area. Composer and member controls remain reachable.

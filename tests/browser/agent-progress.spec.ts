@@ -61,7 +61,13 @@ test("sending, queued follow-ups, running and waiting remain visible and recover
     await page
       .getByRole("button", { name: "Send message", exact: true })
       .click();
-    await expect(progress).toContainText("Sending message…");
+    await expect(
+      page
+        .locator(".chat-row")
+        .filter({ hasText: "Start the work" })
+        .locator(".markdown"),
+    ).toHaveCSS("font-style", "italic");
+    await expect(progress).not.toContainText("Sending");
     release();
     await expect(progress).toContainText(name);
     await expect(progress).toContainText("Waiting to start…");

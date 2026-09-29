@@ -214,9 +214,10 @@ async function agentStatements(
 ): Promise<D1PreparedStatement[]> {
   if (who.kind !== "human") return [];
   const r = await room(m.room_id);
-  let bots = mentioned.filter(
+  const explicitBots = mentioned.filter(
     (p) => p.kind === "bot" && (p.server_id || p.cloud_agent),
   );
+  let bots = [...explicitBots];
   const casual = await isCasual(r.id);
   if (casual) {
     const config = await casualSettings();
@@ -240,6 +241,14 @@ async function agentStatements(
       bots.push(automatic);
   }
   const statements: D1PreparedStatement[] = [];
+  // A root mention chooses the agent for the new topic. Later mentions and
+  // send retries must never overwrite a member's explicit thread preference.
+  if (!m.parent_id && explicitBots.length === 1)
+    statements.push(
+      env.DB.prepare(
+        "INSERT OR IGNORE INTO thread_preferences(root_id,bot_id,changed_by,updated_at) VALUES (?,?,?,?)",
+      ).bind(m.id, explicitBots[0].id, who.id, Date.now()),
+    );
   for (const bot of bots) {
     const rootId = m.parent_id || (r.kind === "dm" || casual ? r.id : m.id);
     const digest = await hash(r.id + ":" + rootId + ":" + bot.id);

@@ -269,7 +269,6 @@ export function ChatRow({
               })}
             </time>
             {m.edited_at && !m.deleted_at && <span>edited</span>}
-            {m.delivery === "sending" && <em>Sending…</em>}
           </MessageHeader>
           <Bubble variant="ghost" className="chat-bubble">
             <BubbleContent>

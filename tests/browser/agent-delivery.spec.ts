@@ -144,6 +144,9 @@ test("real connector transport interleaves actions, persists deliveries and roun
       },
     });
     await page.goto(`/?room=${room.id}&thread=${root.id}`);
+    await expect(
+      page.getByLabel("Auto trigger", { exact: true }),
+    ).toContainText(person.name);
     await expect(page.locator(".team-channel .agent-progress")).toContainText(
       "Waiting for input",
     );

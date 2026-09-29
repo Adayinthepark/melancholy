@@ -410,8 +410,9 @@ it("sends RFC 8291 encrypted private payloads with a valid VAPID signature and s
   const encoded = payload!.body as Uint8Array;
   expect(new TextDecoder().decode(encoded)).not.toContain("Confidential");
   const clear = await decrypt(encoded, f);
+  expect(clear.title).toBe("Other · #" + f.room);
   expect(clear.url).toBe("/thread/" + root);
-  expect(clear.body).toBe("You have a new message.");
+  expect(clear.body).toBe("Replied in a thread.");
   expect(JSON.stringify(clear)).not.toContain("Confidential");
   const jwt = headers
     .get("authorization")!
@@ -435,6 +436,91 @@ it("sends RFC 8291 encrypted private payloads with a valid VAPID signature and s
       new TextEncoder().encode(jwt[0] + "." + jwt[1]),
     ),
   ).toBe(true);
+});
+
+it("identifies the sender and conversation for mentions, DMs, groups and Casual chat task results", async () => {
+  for (const scenario of [
+    "mention",
+    "dm",
+    "group",
+    "casual",
+    "failed",
+    "cancelled",
+  ]) {
+    await env.DB.prepare("DELETE FROM push_subscriptions").run();
+    const f = await fixture(
+      scenario === "mention"
+        ? "channel"
+        : scenario === "group"
+          ? "group"
+          : "dm",
+    );
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE people SET name='Research bot',kind='bot' WHERE id=?",
+      ).bind(f.other),
+      env.DB.prepare("UPDATE rooms SET name=? WHERE id=?").bind(
+        scenario === "group" ? "Launch team " + f.room : "push-" + f.room,
+        f.room,
+      ),
+    ]);
+    if (scenario === "casual")
+      await env.DB.prepare(
+        "INSERT INTO casual_rooms(user_id,room_id,bot_id) VALUES(?,?,?)",
+      )
+        .bind("owner", f.room, f.other)
+        .run();
+    const task = ["dm", "casual", "failed", "cancelled"].includes(scenario);
+    await message(f, {
+      mention: scenario === "mention",
+      ...(task
+        ? {
+            run: crypto.randomUUID(),
+            status: ["failed", "cancelled"].includes(scenario)
+              ? scenario
+              : "completed",
+          }
+        : {}),
+    });
+    let payload: RequestInit | undefined;
+    const fetcher = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (_url, init) => {
+        payload = init;
+        return new Response(null, { status: 201 });
+      });
+    await drainPush(env);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const clear = await decrypt(payload!.body as Uint8Array, f);
+    expect(clear.title).toBe(
+      "Research bot" +
+        (scenario === "mention"
+          ? " · #push-" + f.room
+          : scenario === "group"
+            ? " · Launch team " + f.room
+            : scenario === "casual"
+              ? " · Casual chat"
+              : ""),
+    );
+    expect(clear.body).toBe(
+      scenario === "mention"
+        ? "Mentioned you."
+        : scenario === "group"
+          ? "Sent you a message."
+          : scenario === "failed"
+            ? "Agent task failed."
+            : scenario === "cancelled"
+              ? "Agent task stopped."
+              : "Agent task completed.",
+    );
+    expect(clear.url).toBe("/?room=" + f.room);
+    expect(JSON.stringify(clear)).not.toContain("Confidential");
+    if (scenario === "casual")
+      await env.DB.prepare("DELETE FROM casual_rooms WHERE room_id=?")
+        .bind(f.room)
+        .run();
+    fetcher.mockRestore();
+  }
 });
 
 it("limits test notifications and only delivers to the current session", async () => {

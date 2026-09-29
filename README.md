@@ -14,7 +14,7 @@ server; cloud agent sessions and workspace data stay in your Cloudflare account.
 - Public/private channels, one-to-one messages, group messages and thread replies.
 - Markdown, member mentions, emoji reactions, editing and deletion.
 - Personal Inbox with Unread and Mentions, per-message reads, and live cross-device updates.
-- Private file uploads, image previews, paginated history and message search.
+- Private file uploads, image and Markdown previews, paginated history and message search.
 - Bot identities, scoped API tokens, incoming webhooks and an event cursor API.
 - Codex and Claude Code connectors, explicit session resumption, execution logs
   and task cancellation. Consecutive tool steps open in a compact details dialog.

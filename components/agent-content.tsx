@@ -3,6 +3,7 @@ import { useState } from "react";
 import { FileText, Download, ChevronRight, ListChecks } from "lucide-react";
 import { Button } from "./ui/button";
 import { MessageMarkdown } from "./message-markdown";
+import { FileLink, isMarkdownFile } from "./file-link";
 import { FieldSet } from "./ui/field";
 import { Marker, MarkerContent } from "./ui/marker";
 import {
@@ -132,7 +133,11 @@ export function DeliveredArtifact({
   const card = (
     <Attachment state="done">
       <AttachmentMedia variant="icon">
-        {artifact.noteId ? <FileText /> : <Download />}
+        {artifact.noteId || (file && isMarkdownFile(file)) ? (
+          <FileText />
+        ) : (
+          <Download />
+        )}
       </AttachmentMedia>
       <AttachmentContent>
         <AttachmentTitle>{artifact.name}</AttachmentTitle>
@@ -140,7 +145,8 @@ export function DeliveredArtifact({
           {artifact.noteId
             ? "Saved to Notes · Open document"
             : file
-              ? formatSize(file.size) + " · Download"
+              ? formatSize(file.size) +
+                (isMarkdownFile(file) ? " · Open Markdown" : " · Download")
               : "Delivery"}
         </AttachmentDescription>
       </AttachmentContent>
@@ -157,7 +163,7 @@ export function DeliveredArtifact({
           {card}
         </button>
       ) : file ? (
-        <a href={"/api/files/" + file.id}>
+        <FileLink file={file} className="agent-document-button">
           {["image/png", "image/jpeg", "image/gif", "image/webp"].includes(
             file.type,
           ) && (
@@ -169,7 +175,7 @@ export function DeliveredArtifact({
             />
           )}
           {card}
-        </a>
+        </FileLink>
       ) : null}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="agent-document-dialog">

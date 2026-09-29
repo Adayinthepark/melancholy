@@ -3028,6 +3028,30 @@
   max-height: 65dvh;
   overflow: auto;
 }
+.markdown-file-dialog {
+  width: min(820px, calc(100vw - 32px));
+  max-width: 820px;
+  max-height: 90dvh;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.markdown-file-content {
+  min-width: 0;
+  min-height: 0;
+  max-height: 65dvh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.markdown-file-content .markdown > :first-child {
+  margin-top: 0;
+}
+.markdown-file-content .markdown > :last-child {
+  margin-bottom: 0;
+}
+button.chat-file,
+.channel-file [data-slot="attachment-title"] button {
+  text-align: left;
+  cursor: pointer;
+}
 @media (prefers-reduced-motion: reduce) {
   .agent-action > summary > svg {
     transition: none;

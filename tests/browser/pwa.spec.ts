@@ -43,8 +43,8 @@ test("installs a service worker, handles visible push and caches only public off
     origin: "http://127.0.0.1:3017",
     registrationId,
     data: JSON.stringify({
-      title: "Test workspace",
-      body: "You have a new message.",
+      title: "Research bot · #general",
+      body: "Agent task completed.",
       tag: "browser-test",
       url: "/thread/" + root,
     }),
@@ -58,8 +58,8 @@ test("installs a service worker, handles visible push and caches only public off
       ),
     )
     .toContainEqual({
-      title: "Test workspace",
-      body: "You have a new message.",
+      title: "Research bot · #general",
+      body: "Agent task completed.",
       url: "http://127.0.0.1:3017/thread/" + root,
     });
   await client.send("ServiceWorker.deliverPushMessage", {

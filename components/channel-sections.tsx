@@ -13,6 +13,7 @@ import {
 import { Marker, MarkerContent } from "./ui/marker";
 import { toast } from "sonner";
 import { FileText, Download, Plus, Clock } from "lucide-react";
+import { FileLink } from "./file-link";
 import { api, post } from "@/lib/client";
 import type { Room, TeamWorkspace } from "@/lib/chat";
 import type { ChannelNote, ChannelFile, ChannelTimer } from "@/lib/projects";
@@ -460,9 +461,7 @@ function ChannelFiles({
             </AttachmentMedia>
             <AttachmentContent>
               <AttachmentTitle>
-                <a href={"/api/chat/files/" + f.id} download={f.name}>
-                  {f.name}
-                </a>
+                <FileLink file={f}>{f.name}</FileLink>
               </AttachmentTitle>
               <AttachmentDescription>
                 {f.size < 1024

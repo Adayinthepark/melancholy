@@ -128,10 +128,15 @@ export async function drainPush(env: Cloudflare.Env) {
         try {
           // Recheck access, session, deletion and read position immediately before delivery.
           const target = await env.DB.prepare(
-            `SELECT s.*,m.room_id,m.parent_id,m.run_status,m.run_id
+            `SELECT s.*,m.room_id,m.parent_id,m.run_status,m.run_id,
+          author.name AS author_name,r.name AS room_name,r.kind AS room_kind,
+          EXISTS(SELECT 1 FROM casual_rooms cr WHERE cr.room_id=r.id) AS casual,
+          EXISTS(SELECT 1 FROM message_mentions mm WHERE mm.message_id=m.id AND mm.person_id=s.person_id) AS mentioned
           FROM push_subscriptions s JOIN sessions login ON login.token_hash=s.session_hash AND login.person_id=s.person_id
           JOIN people p ON p.id=s.person_id AND p.active=1
           JOIN chat_messages m ON m.id=? AND m.deleted_at IS NULL
+          JOIN people author ON author.id=m.author_id
+          JOIN rooms r ON r.id=m.room_id
           JOIN room_members rm ON rm.room_id=m.room_id AND rm.person_id=s.person_id
           WHERE s.id=? AND login.expires_at>? AND (m.run_id IS NOT NULL OR m.seq>COALESCE(
             (SELECT last_seq FROM room_reads WHERE room_id=m.room_id AND person_id=s.person_id),0))
@@ -144,18 +149,40 @@ export async function drainPush(env: Cloudflare.Env) {
                 parent_id: string | null;
                 run_status: string | null;
                 run_id: string | null;
+                author_name: string;
+                room_name: string;
+                room_kind: string;
+                casual: number;
+                mentioned: number;
               }
             >();
           if (target && item.created_at > now - DAY && item.attempts <= 6) {
+            const label = (value: string) =>
+              value
+                .replace(/[\u0000-\u001f\u007f]/g, " ")
+                .trim()
+                .slice(0, 80);
+            const author = label(target.author_name) || "Someone";
+            const location = target.casual
+              ? "Casual chat"
+              : target.room_kind === "channel"
+                ? "#" + label(target.room_name)
+                : target.room_kind === "group"
+                  ? label(target.room_name) || "Group chat"
+                  : "";
             const status = await transmit(env, target, {
-              title: env.WORKSPACE_NAME || "melancholy",
+              title: location ? author + " · " + location : author,
               body: target.run_id
                 ? target.run_status === "completed"
                   ? "Agent task completed."
                   : target.run_status === "cancelled"
                     ? "Agent task stopped."
                     : "Agent task failed."
-                : "You have a new message.",
+                : target.mentioned
+                  ? "Mentioned you."
+                  : target.parent_id
+                    ? "Replied in a thread."
+                    : "Sent you a message.",
               url: target.parent_id
                 ? "/thread/" + target.parent_id
                 : "/?room=" + encodeURIComponent(target.room_id),

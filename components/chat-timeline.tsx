@@ -4,6 +4,7 @@ import { AnimatedIcon } from "./animated-icon";
 import { useEffect, useRef, useState } from "react";
 import { MessageReadTracker } from "./message-read-tracker";
 import { MessageMarkdown } from "./message-markdown";
+import { FileLink, isMarkdownFile } from "./file-link";
 import { PersonAvatar } from "./person-avatar";
 import { mentionText, encodeMentions } from "@/lib/mentions";
 import {
@@ -321,9 +322,9 @@ export function ChatRow({
                             </Attachment>
                           </a>
                         ) : (
-                          <a
+                          <FileLink
                             key={file.id}
-                            href={"/api/files/" + file.id}
+                            file={file}
                             className="chat-file"
                           >
                             <Attachment state="done">
@@ -334,10 +335,11 @@ export function ChatRow({
                                 <AttachmentTitle>{file.name}</AttachmentTitle>
                                 <AttachmentDescription>
                                   {formatSize(file.size)}
+                                  {isMarkdownFile(file) && " · Open Markdown"}
                                 </AttachmentDescription>
                               </AttachmentContent>
                             </Attachment>
-                          </a>
+                          </FileLink>
                         ),
                       )}
                     </div>

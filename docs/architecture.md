@@ -94,8 +94,9 @@ and terminal agent projection transactions insert per-subscription delivery rows
 into D1. Immediate delivery and Cron recovery share atomic expiring claims;
 before sending they recheck membership, active identity, session expiry, message
 deletion and read position. Delivery uses RFC 8291 encryption and VAPID keys in
-Worker secrets, with an explicit push-host allowlist and no redirects. Generic
-payloads contain no chat text. Session deletion cascades to subscriptions and
+Worker secrets, with an explicit push-host allowlist and no redirects. Payloads
+identify the sender and channel/group/Casual chat, with an event status but no
+chat text. Session deletion cascades to subscriptions and
 queued deliveries. Expired subscriptions and old delivery records are pruned.
 Web Push is best effort; retries can overlap an uncertain provider acceptance,
 so stable notification tags also merge duplicate events on the device.
@@ -151,7 +152,11 @@ R2 stays private. Uploads are limited to 10 MB each and eight files per message.
 A draft upload is accessible only to its uploader. After posting, conversation
 members can download it. Connector downloads use the server's bot membership.
 Only PNG, JPEG, GIF and WebP are shown inline; other types download with a
-restrictive content security policy. Deleted message attachments are inaccessible.
+restrictive content security policy. Markdown attachments also open in a read-only
+dialog using the authorized download endpoint and the existing Markdown renderer.
+Preview reads are bounded to 1 MiB; larger files retain the original download.
+Raw HTML is not executed. No private bytes are stored in a persistent browser cache.
+Deleted message attachments are inaccessible.
 
 D1 and an individual paid SQLite Durable Object each have a 10 GB storage limit.
 Room lists currently return up to 500 accessible conversations. Message history,

@@ -533,6 +533,156 @@ describe("bots and connected agents", () => {
   });
 });
 
+describe("agent request progress", () => {
+  it("persists the exact request/reply lifecycle while follow-ups queue, and scopes Stop to its run", async () => {
+    const owner = await login();
+    const server = (await (
+      await request("/api/servers", owner, "POST", {
+        name: "Progress agent",
+        runtime: "codex",
+      })
+    ).json()) as { id: string };
+    const id = await create(owner, {
+      kind: "dm",
+      members: [server.id],
+      name: "",
+    });
+    const first = await send(owner, id, "first task");
+    expect(first.agent_requests).toHaveLength(1);
+    expect(first.agent_requests![0]).toMatchObject({
+      bot_id: server.id,
+      bot_name: "Progress agent",
+    });
+    const dispatcher = env.CHAT_DISPATCHERS.getByName(id);
+    await dispatcher.kick(id);
+    const mapping = await env.DB.prepare(
+      "SELECT thread_id FROM agent_threads WHERE room_id=?",
+    )
+      .bind(id)
+      .first<{ thread_id: string }>();
+    const agent = env.CONVERSATIONS.getByName(mapping!.thread_id);
+    const initial = (await inspectAgent(agent)).runs[0];
+    const state = async (messageId: string) =>
+      (await messages(owner, id)).messages.find((m) => m.id === messageId)!
+        .agent_requests![0];
+    const firstState = await state(first.id);
+    expect(firstState.status).toBe("queued");
+    expect(firstState.reply_id).toBeTruthy();
+    await agent.receive(initial.id, 1, {
+      type: "started",
+      sessionId: "progress-session",
+    });
+    expect((await state(first.id)).status).toBe("running");
+    const second = await send(owner, id, "follow-up task");
+    await dispatcher.kick(id);
+    expect(await state(second.id)).toMatchObject({
+      status: "pending",
+      reply_id: null,
+    });
+    await agent.receive(initial.id, 2, {
+      type: "interaction",
+      interaction: {
+        id: "question",
+        kind: "question",
+        title: "Which version?",
+        detail: "",
+        state: "pending",
+        questions: [
+          { id: "version", title: "Version", options: [], freeform: true },
+        ],
+      },
+    });
+    expect((await state(first.id)).status).toBe("waiting");
+    expect((await state(second.id)).status).toBe("pending");
+    await agent.receive(initial.id, 3, { type: "completed" });
+    expect((await state(first.id)).status).toBe("completed");
+    await dispatcher.kick(id);
+    const next = (await inspectAgent(agent)).runs.find(
+      (r) => r.id !== initial.id,
+    )!;
+    expect(await state(second.id)).toMatchObject({ status: "queued" });
+    expect((await state(second.id)).reply_id).not.toBe(firstState.reply_id);
+    expect(JSON.parse(next.job).sessionId).toBe("progress-session");
+    // A stale Stop button must not cancel the next accepted task.
+    await request(`/api/chat/rooms/${id}/stop`, owner, "POST", {
+      messageId: firstState.reply_id,
+    });
+    expect((await state(second.id)).status).toBe("queued");
+    // A queued follow-up whose bot is deactivated has a durable failure.
+    const third = await send(owner, id, "cannot dispatch this");
+    await env.DB.prepare("UPDATE people SET active=0 WHERE id=?")
+      .bind(server.id)
+      .run();
+    await expect
+      .poll(async () => {
+        await dispatcher.kick(id);
+        return state(third.id);
+      })
+      .toMatchObject({
+        status: "failed",
+        error: "Bot is unavailable.",
+        reply_id: null,
+      });
+    await agent.receive(next.id, 1, {
+      type: "failed",
+      error: "Execution failed",
+    });
+    expect(await state(second.id)).toMatchObject({
+      status: "failed",
+      error: "Execution failed",
+    });
+  });
+
+  it("reports no request when thread auto trigger is off, and can stop a DM thread independently", async () => {
+    const owner = await login();
+    const server = (await (
+      await request("/api/servers", owner, "POST", {
+        name: "Thread progress agent",
+        runtime: "codex",
+      })
+    ).json()) as { id: string };
+    const id = await create(owner, {
+      kind: "dm",
+      members: [server.id],
+      name: "",
+    });
+    const root = await send(owner, id, "main conversation");
+    await env.CHAT_DISPATCHERS.getByName(id).kick(id);
+    const off = await send(owner, id, "ordinary reply", root.id);
+    expect(off.agent_requests).toEqual([]);
+    await request(`/api/chat/threads/${root.id}/preferences`, owner, "PUT", {
+      botId: server.id,
+    });
+    const on = await send(owner, id, "automatic reply", root.id);
+    await expect
+      .poll(async () => {
+        await env.CHAT_DISPATCHERS.getByName(id).kick(id);
+        return (await messages(owner, id, root.id)).messages.find(
+          (m) => m.id === on.id,
+        )!.agent_requests![0].status;
+      })
+      .toBe("queued");
+    const reply = (await messages(owner, id, root.id)).messages.find(
+      (m) => m.id === on.id,
+    )!;
+    expect(reply.agent_requests![0].status).toBe("queued");
+    await request(`/api/chat/rooms/${id}/stop`, owner, "POST", {
+      messageId: reply.agent_requests![0].reply_id,
+    });
+    expect(
+      (await messages(owner, id, root.id)).messages.find((m) => m.id === on.id)!
+        .agent_requests![0].status,
+    ).toBe("cancelled");
+    const main = (await messages(owner, id)).messages.find(
+      (m) => m.id === root.id,
+    )!.agent_requests![0];
+    expect(main.status).toBe("queued");
+    await request(`/api/chat/rooms/${id}/stop`, owner, "POST", {
+      messageId: main.reply_id,
+    });
+  });
+});
+
 describe("message reading and personal inbox", () => {
   it("records individual reads without consuming other messages or thread replies", async () => {
     const owner = await login(),

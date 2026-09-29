@@ -27,7 +27,23 @@ export type Room = {
   members: Person[];
 };
 export type Reaction = { emoji: string; count: number; mine: boolean };
+export type AgentRequest = {
+  bot_id: string;
+  bot_name: string;
+  status:
+    | "pending"
+    | "queued"
+    | "running"
+    | "waiting"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "dispatched";
+  reply_id: string | null;
+  error: string | null;
+};
 export type TeamMessage = {
+  agent_requests?: AgentRequest[];
   unread?: boolean;
   mentioned?: boolean | number;
   id: string;

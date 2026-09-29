@@ -136,6 +136,12 @@ test("real connector transport interleaves actions, persists deliveries and roun
       },
     });
     await page.goto(`/?room=${room.id}&thread=${root.id}`);
+    await expect(page.locator(".team-channel .agent-progress")).toContainText(
+      "Waiting for input",
+    );
+    await expect(page.locator(".team-thread .agent-progress")).toContainText(
+      "Waiting for input",
+    );
     const row = page
       .locator(".chat-row[data-message-id]")
       .filter({ has: page.locator('[data-agent-part="interaction"]') });

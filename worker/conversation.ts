@@ -416,6 +416,12 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
       )
       .toArray()[0];
     if (!run || !message) return;
+    const source = this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM messages WHERE run_id=? AND role='user' LIMIT 1",
+        runId,
+      )
+      .toArray()[0];
     let parts = this.readParts(runId);
     if (terminal.has(run.status)) {
       // An upload may have committed just before the connector lost its process.
@@ -466,6 +472,11 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
         JSON.stringify(parts),
       ),
       queuePush(this.env.DB, message.id),
+      // Commit the request/reply link with the projection so clients never
+      // lose the accepted request while a dispatcher finishes its hand-off.
+      this.env.DB.prepare(
+        "UPDATE agent_requests SET reply_id=? WHERE message_id=? AND bot_id=? AND (reply_id IS NULL OR reply_id=?)",
+      ).bind(message.id, source?.id || "", chat.botId, message.id),
     ]);
     this.ctx.waitUntil(drainPush(this.env));
     this.ctx.storage.sql.exec(
@@ -594,13 +605,13 @@ export class Conversation extends DurableObject<Cloudflare.Env> {
       }
     if (pending) await this.ctx.storage.setAlarm(Date.now() + 3000);
   }
-  async cancel() {
+  async cancel(expectedRunId?: string) {
     const run = this.ctx.storage.sql
       .exec<StoredRun>(
         "SELECT * FROM runs WHERE status IN ('queued','running') LIMIT 1",
       )
       .toArray()[0];
-    if (!run) return;
+    if (!run || (expectedRunId && run.id !== expectedRunId)) return;
     // Cancel in the relay even when the initial room-to-relay dispatch is still in flight.
     if (run.runtime === "pi") {
       await this.env.CLOUD_AGENTS.getByName(

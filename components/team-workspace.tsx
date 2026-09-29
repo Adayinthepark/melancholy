@@ -85,6 +85,7 @@ import type { Attachment } from "@/lib/protocol";
 import { Login } from "./login";
 import { ChatTimeline } from "./chat-timeline";
 import { ChatComposer } from "./chat-composer";
+import { AgentProgress } from "./agent-progress";
 import { TeamSettings, Choice } from "./team-settings";
 const emptyPage: MessagePage = { messages: [], hasMore: false, latest: 0 };
 export function roomName(room: Room, me: string) {
@@ -596,6 +597,17 @@ export function TeamWorkspaceApp({
         else if (active.current.threadId === m.parent_id) setReplies(insert);
       }
       setPending((list) => list.filter((p) => p.id !== m.id));
+      if (
+        m.parent_id &&
+        message.agent_requests?.length === 0 &&
+        current?.members.some(
+          (p) => p.kind === "bot" && (p.server_id || p.cloud_agent),
+        )
+      ) {
+        toast.info(
+          "Message sent. Mention an agent or enable Auto trigger to get an agent reply.",
+        );
+      }
       void latestRefresh.current();
     } catch (e) {
       setPending((list) =>
@@ -1073,6 +1085,15 @@ export function TeamWorkspaceApp({
                           parentId={threadId}
                           people={current.members}
                           label="Reply in thread"
+                          progress={
+                            <AgentProgress
+                              messages={[
+                                ...(root?.id === threadId ? [root] : []),
+                                ...visibleReplies,
+                              ]}
+                              onChange={() => latestRefresh.current()}
+                            />
+                          }
                           onSend={sendDraft}
                         />
                       )}
@@ -1150,6 +1171,12 @@ export function TeamWorkspaceApp({
                         roomName(current, me.id)
                       }
                       onSend={sendDraft}
+                      progress={
+                        <AgentProgress
+                          messages={visibleMessages}
+                          onChange={() => latestRefresh.current()}
+                        />
+                      }
                     />
                   ) : (
                     <div className="join-channel">

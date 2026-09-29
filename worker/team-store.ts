@@ -1,7 +1,7 @@
 import { unreadMessageSql } from "./read-query";
 import { proseOnly } from "../lib/mentions";
 import { env } from "cloudflare:workers";
-import type { Person, TeamMessage } from "../lib/chat";
+import type { AgentRequest, Person, TeamMessage } from "../lib/chat";
 import type { Attachment } from "../lib/protocol";
 import type { Identity } from "./team-auth";
 export const personColumns =
@@ -15,6 +15,7 @@ export type StoredChat = Omit<
   | "reactions"
   | "reply_count"
   | "mention_refs"
+  | "agent_requests"
 > & {
   attachments: string;
   activity: string;
@@ -38,40 +39,61 @@ export async function hydrate(
   if (!rows.length) return [];
   const ids = JSON.stringify(rows.map((r) => r.id)),
     placeholders = "SELECT value FROM json_each(?)";
-  const [people, reactions, replies, mentioned, unread] = await Promise.all([
-    env.DB.prepare(
-      `SELECT ${personColumns} FROM people WHERE id IN (SELECT author_id FROM chat_messages WHERE id IN (${placeholders}))`,
-    )
-      .bind(ids)
-      .all<Person>(),
-    env.DB.prepare(
-      `SELECT message_id,emoji,COUNT(*) AS count,MAX(person_id=?) AS mine FROM message_reactions WHERE message_id IN (${placeholders}) GROUP BY message_id,emoji`,
-    )
-      .bind(who.id, ids)
-      .all<{
-        message_id: string;
-        emoji: string;
-        count: number;
-        mine: number;
-      }>(),
-    env.DB.prepare(
-      `SELECT parent_id,COUNT(*) AS count FROM chat_messages WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL GROUP BY parent_id`,
-    )
-      .bind(ids)
-      .all<{ parent_id: string; count: number }>(),
-    env.DB.prepare(
-      `SELECT mm.message_id,p.${personColumns.split(",").join(",p.")} FROM message_mentions mm JOIN people p ON p.id=mm.person_id WHERE mm.message_id IN (${placeholders})`,
-    )
-      .bind(ids)
-      .all<Person & { message_id: string }>(),
-    env.DB.prepare(
-      `SELECT m.id FROM chat_messages m WHERE m.id IN (SELECT value FROM json_each(?2)) AND ${unreadMessageSql("?1")}`,
-    )
-      .bind(who.id, ids)
-      .all<{ id: string }>(),
-  ]);
+  const [people, reactions, replies, mentioned, unread, requests] =
+    await Promise.all([
+      env.DB.prepare(
+        `SELECT ${personColumns} FROM people WHERE id IN (SELECT author_id FROM chat_messages WHERE id IN (${placeholders}))`,
+      )
+        .bind(ids)
+        .all<Person>(),
+      env.DB.prepare(
+        `SELECT message_id,emoji,COUNT(*) AS count,MAX(person_id=?) AS mine FROM message_reactions WHERE message_id IN (${placeholders}) GROUP BY message_id,emoji`,
+      )
+        .bind(who.id, ids)
+        .all<{
+          message_id: string;
+          emoji: string;
+          count: number;
+          mine: number;
+        }>(),
+      env.DB.prepare(
+        `SELECT parent_id,COUNT(*) AS count FROM chat_messages WHERE parent_id IN (${placeholders}) AND deleted_at IS NULL GROUP BY parent_id`,
+      )
+        .bind(ids)
+        .all<{ parent_id: string; count: number }>(),
+      env.DB.prepare(
+        `SELECT mm.message_id,p.${personColumns.split(",").join(",p.")} FROM message_mentions mm JOIN people p ON p.id=mm.person_id WHERE mm.message_id IN (${placeholders})`,
+      )
+        .bind(ids)
+        .all<Person & { message_id: string }>(),
+      env.DB.prepare(
+        `SELECT m.id FROM chat_messages m WHERE m.id IN (SELECT value FROM json_each(?2)) AND ${unreadMessageSql("?1")}`,
+      )
+        .bind(who.id, ids)
+        .all<{ id: string }>(),
+      env.DB.prepare(
+        `SELECT a.message_id,a.bot_id,p.name AS bot_name,a.reply_id,
+        COALESCE(a.error,m.run_error) AS error,
+        CASE WHEN a.error IS NOT NULL THEN 'failed'
+          WHEN m.run_status IN ('queued','running') AND EXISTS (
+            SELECT 1 FROM json_each(m.parts) part
+            WHERE json_extract(part.value,'$.type')='interaction'
+              AND json_extract(part.value,'$.interaction.state') IN ('pending','sending')
+          ) THEN 'waiting'
+          WHEN m.run_status IS NOT NULL THEN m.run_status
+          WHEN a.dispatched=0 THEN 'pending' ELSE 'dispatched' END AS status
+        FROM agent_requests a JOIN people p ON p.id=a.bot_id
+        LEFT JOIN chat_messages m ON m.id=a.reply_id
+        WHERE a.message_id IN (${placeholders})`,
+      )
+        .bind(ids)
+        .all<AgentRequest & { message_id: string }>(),
+    ]);
   return rows.map((r) => ({
     ...r,
+    agent_requests: requests.results
+      .filter((a) => a.message_id === r.id)
+      .map(({ message_id: _, ...a }) => a),
     unread: unread.results.some((m) => m.id === r.id),
     attachments: JSON.parse(r.attachments) as Attachment[],
     activity: JSON.parse(r.activity),

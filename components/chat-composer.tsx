@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ArrowUp, AtSign, Paperclip, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -27,11 +27,13 @@ export function ChatComposer({
   people,
   label,
   onSend,
+  progress,
 }: {
   roomId: string;
   parentId?: string;
   people: Person[];
   label: string;
+  progress?: ReactNode;
   onSend: (draft: {
     id: string;
     text: string;
@@ -114,6 +116,7 @@ export function ChatComposer({
           .slice(0, 8);
   return (
     <div className="chat-composer">
+      {progress}
       <input
         className="sr-only"
         type="file"

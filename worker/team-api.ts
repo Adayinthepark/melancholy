@@ -829,10 +829,10 @@ async function route(request: Request): Promise<Response> {
       const mapping = await env.DB.prepare(
         "SELECT thread_id FROM agent_threads WHERE room_id=? AND bot_id=? AND root_id=?",
       )
-        .bind(id, m.author_id, r.kind === "dm" ? r.id : m.parent_id)
+        .bind(id, m.author_id, m.parent_id || r.id)
         .first<{ thread_id: string }>();
       if (mapping)
-        await env.CONVERSATIONS.getByName(mapping.thread_id).cancel();
+        await env.CONVERSATIONS.getByName(mapping.thread_id).cancel(m.run_id);
       return json({ ok: true });
     }
     if (action === "export" && method === "GET") {

@@ -1,5 +1,6 @@
 "use client";
 import { AgentContent, AgentActions } from "./agent-content";
+import { AgentStatus, isAgentActive, messageProgress } from "./agent-progress";
 import { AnimatedIcon } from "./animated-icon";
 import { useEffect, useRef, useState } from "react";
 import { MessageReadTracker } from "./message-read-tracker";
@@ -14,7 +15,6 @@ import {
   Trash2,
   Link,
   FileText,
-  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -225,12 +225,8 @@ export function ChatRow({
     ) || [],
   );
   const attachments = m.attachments.filter((f) => !delivered.has(f.id));
-  const waiting = m.parts?.some(
-    (p) =>
-      p.type === "interaction" &&
-      ["pending", "sending"].includes(p.interaction.state),
-  );
-  const active = m.run_status === "queued" || m.run_status === "running";
+  const progress = messageProgress(m);
+  const active = !!progress && isAgentActive(progress.status);
   async function action(fn: () => Promise<unknown>) {
     setBusy(true);
     try {
@@ -352,32 +348,32 @@ export function ChatRow({
                       }))}
                     />
                   )}
-                  {active && (
+                  {progress && isAgentActive(progress.status) && (
                     <div className="chat-run-state">
-                      <span>
-                        {m.run_status === "queued"
-                          ? "Waiting for server"
-                          : waiting
-                            ? "Waiting for input"
-                            : "Working…"}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        aria-label="Stop task"
-                        onClick={() =>
-                          void action(() =>
-                            post("/chat/rooms/" + m.room_id + "/stop", {
-                              messageId: m.id,
-                            }),
-                          )
-                        }
-                      >
-                        <Square />
-                        Stop
-                      </Button>
+                      <AgentStatus
+                        request={progress}
+                        roomId={m.room_id}
+                        onChange={onChange}
+                        inline
+                      />
                     </div>
                   )}
+                  {m.agent_requests
+                    ?.filter(
+                      (a) =>
+                        !a.reply_id &&
+                        (isAgentActive(a.status) || a.status === "failed"),
+                    )
+                    .map((request) => (
+                      <div className="chat-run-state" key={request.bot_id}>
+                        <AgentStatus
+                          request={request}
+                          roomId={m.room_id}
+                          onChange={onChange}
+                          inline
+                        />
+                      </div>
+                    ))}
                   {m.run_status === "failed" && (
                     <p className="form-error">
                       {m.run_error || "Task failed."}

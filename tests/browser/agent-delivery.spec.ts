@@ -104,6 +104,14 @@ test("real connector transport interleaves actions, persists deliveries and roun
       status: "running",
     });
     await emit({
+      type: "activity",
+      id: "alternate",
+      title: "Try alternate source",
+      detail:
+        "The alternate source was unavailable; continuing with local files.",
+      status: "failed",
+    });
+    await emit({
       type: "text",
       id: "plan",
       text: "Choose the report format before I continue.",
@@ -158,9 +166,29 @@ test("real connector transport interleaves actions, persists deliveries and roun
     await expect(
       row.getByText("Read project files", { exact: true }),
     ).toHaveCount(0);
-    await row
-      .getByRole("button", { name: "2 actions · Running", exact: true })
-      .click();
+    const actionTrigger = row.getByRole("button", {
+      name: /Open action details.*3 actions/,
+    });
+    await actionTrigger.scrollIntoViewIfNeeded();
+    for (const width of [1280, 390])
+      for (const dark of [false, true]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(
+          (value) => document.documentElement.classList.toggle("dark", value),
+          dark,
+        );
+        await actionTrigger.scrollIntoViewIfNeeded();
+        await page.screenshot({
+          path: `/tmp/melancholy-action-dots-${width}-${dark}.png`,
+          animations: "disabled",
+        });
+      }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.evaluate(() =>
+      document.documentElement.classList.remove("dark"),
+    );
+    await actionTrigger.focus();
+    await page.keyboard.press("Enter");
     const actionDialog = page.getByRole("dialog", { name: "Action details" });
     await expect(
       actionDialog.getByText("Read project files", { exact: true }),
@@ -195,9 +223,7 @@ test("real connector transport interleaves actions, persists deliveries and roun
       animations: "disabled",
     });
     await page.keyboard.press("Escape");
-    await expect(
-      row.getByRole("button", { name: "2 actions", exact: true }),
-    ).toBeFocused();
+    await expect(actionTrigger).toBeFocused();
     await row.getByRole("radio", { name: /Markdown/ }).check();
     await row.getByRole("button", { name: "Next", exact: true }).click();
     await row

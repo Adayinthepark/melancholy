@@ -111,6 +111,9 @@
   --accent: #e9e9e9;
   --accent-foreground: #202020;
   --destructive: #ad3636;
+  --action-succeeded: #779581;
+  --action-failed: #a97472;
+  --action-running: #6f8fac;
   --border: #e8e8e8;
   --input: #e2e2e2;
   --ring: #939393;
@@ -138,6 +141,9 @@
   --accent: #303030;
   --accent-foreground: #f0f0f0;
   --destructive: #e08888;
+  --action-succeeded: #8aa995;
+  --action-failed: #bd8985;
+  --action-running: #88a7c3;
   --border: #303030;
   --input: #3b3b3b;
   --ring: #777;
@@ -3092,10 +3098,62 @@ button.chat-file,
 /* Execution stays in the conversation sequence; raw commands live in a dialog. */
 .agent-actions {
   align-self: flex-start;
+  max-width: 100%;
   margin-block: 1px;
 }
-.agent-actions > button {
-  color: var(--muted-foreground);
+.agent-actions-trigger {
+  min-width: 32px;
+  min-height: 32px;
+  height: auto;
+  max-width: 100%;
+  padding-block: 6px;
+}
+.agent-action-dots {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 2px;
+  min-width: 0;
+  padding-inline-start: 6px;
+}
+.agent-action-dot {
+  --action-color: var(--muted-foreground);
+  flex: 0 0 16px;
+  height: 16px;
+  margin-inline-start: -6px;
+  border: 2px solid var(--background);
+  border-radius: 50%;
+  background: var(--background);
+}
+.agent-action-dot::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--action-color);
+}
+.agent-action-dot[data-state="succeeded"] {
+  --action-color: var(--action-succeeded);
+}
+.agent-action-dot[data-state="failed"] {
+  --action-color: var(--action-failed);
+}
+.agent-action-dot[data-state="running"] {
+  --action-color: var(--action-running);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .agent-action-dot[data-state="running"]::before {
+    animation: agent-action-pulse 1.8s ease-in-out infinite;
+  }
+}
+@keyframes agent-action-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 .agent-actions-dialog {
   width: min(720px, calc(100vw - 32px));

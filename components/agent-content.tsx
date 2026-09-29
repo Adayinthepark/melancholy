@@ -1,11 +1,12 @@
 "use client";
 import { useState } from "react";
-import { FileText, Download, ChevronRight, ListChecks } from "lucide-react";
+import { FileText, Download, ChevronRight } from "lucide-react";
 import { Button } from "./ui/button";
 import { MessageMarkdown } from "./message-markdown";
 import { FileLink, isMarkdownFile } from "./file-link";
 import { FieldSet } from "./ui/field";
 import { Marker, MarkerContent } from "./ui/marker";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import {
   Attachment,
   AttachmentMedia,
@@ -72,21 +73,49 @@ export function AgentActions({
   parts: Extract<AgentPart, { type: "activity" }>[];
 }) {
   if (!parts.length) return null;
-  const running = parts.some((p) =>
-    ["running", "pending", "queued"].includes(p.status),
+  const states = parts.map((p) =>
+    ["completed", "succeeded", "success"].includes(p.status)
+      ? "succeeded"
+      : ["failed", "error"].includes(p.status)
+        ? "failed"
+        : p.status === "running"
+          ? "running"
+          : ["pending", "queued"].includes(p.status)
+            ? "queued"
+            : ["cancelled", "canceled"].includes(p.status)
+              ? "stopped"
+              : "unknown",
   );
-  const failed = parts.some((p) => ["failed", "error"].includes(p.status));
+  const counts = [...new Set(states)].map(
+    (state) => `${states.filter((s) => s === state).length} ${state}`,
+  );
+  const summary = `${parts.length} ${parts.length === 1 ? "action" : "actions"}: ${counts.join(", ")}`;
   return (
     <div className="agent-actions" data-agent-part="activity">
       <Dialog>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="xs">
-            <ListChecks />
-            {parts.length} {parts.length === 1 ? "action" : "actions"}
-            {running ? " · Running" : failed ? " · Failed" : ""}
-            <ChevronRight />
-          </Button>
-        </DialogTrigger>
+        <Tooltip delayDuration={300}>
+          <DialogTrigger asChild>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="agent-actions-trigger"
+                aria-label={`Open action details — ${summary}`}
+              >
+                <span className="agent-action-dots" aria-hidden="true">
+                  {parts.map((p, index) => (
+                    <span
+                      key={p.id}
+                      className="agent-action-dot"
+                      data-state={states[index]}
+                    />
+                  ))}
+                </span>
+              </Button>
+            </TooltipTrigger>
+          </DialogTrigger>
+          <TooltipContent>{summary}</TooltipContent>
+        </Tooltip>
         <DialogContent className="agent-actions-dialog">
           <DialogHeader>
             <DialogTitle>Action details</DialogTitle>

@@ -22,11 +22,7 @@ export function ThreadPanel({
       const width = parent.clientWidth;
       const mobile = matchMedia("(max-width: 760px)").matches;
       setSize({
-        width: focused
-          ? Math.min(width, 920)
-          : mobile
-            ? width
-            : Math.min(440, width * 0.45),
+        width: focused ? Math.min(width, 920) : width,
         mobile,
       });
     };
@@ -50,12 +46,13 @@ export function ThreadPanel({
       data-present={present}
       inert={!present || undefined}
       aria-hidden={!present || undefined}
-      initial={focused || reduced ? false : { width: 0, opacity: 0 }}
-      animate={{ width: size.width, opacity: 1 }}
+      initial={focused || reduced ? false : { opacity: 0 }}
+      style={{ width: "100%", height: "100%" }}
+      animate={{ opacity: 1 }}
       exit={
         overlay
           ? { opacity: 1, transition: { duration: 0.01, delay: duration } }
-          : { width: 0, opacity: 0 }
+          : { opacity: 0 }
       }
       transition={{ duration, ease: [0.22, 1, 0.36, 1] }}
       onKeyDown={(event) => {
@@ -69,7 +66,9 @@ export function ThreadPanel({
         className="team-thread"
         aria-label="Thread"
         style={{ width: size.width }}
-        initial={focused || reduced ? false : { x: "100%", opacity: 0 }}
+        initial={
+          focused || reduced ? false : { x: overlay ? "100%" : 12, opacity: 0 }
+        }
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: overlay ? size.width : 24, opacity: overlay ? 1 : 0 }}
         transition={{ duration, ease: [0.22, 1, 0.36, 1] }}

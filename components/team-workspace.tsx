@@ -1,12 +1,14 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { transitionContent } from "@/lib/content-transition";
 import { AnimatedIcon } from "./animated-icon";
 import { ChannelSections } from "./channel-sections";
 import { CasualSuggestions } from "./casual-chat";
 import { ResourceFields, applyResources } from "./channel-resources";
 import { emptyResources, type ChannelSuggestion } from "@/lib/projects";
 import { Textarea } from "./ui/textarea";
+import { ConversationLayout } from "./conversation-layout";
 import { ThreadPanel } from "./thread-panel";
 import Link from "next/link";
 import { MessagesSkeleton, WorkspaceSkeleton } from "./loading-states";
@@ -404,15 +406,21 @@ export function TeamWorkspaceApp({
     };
   }, [query, searchOpen]);
   function choose(id: string, thread: string | null = null) {
-    setChannelTab("chat");
-    setRoomId(id);
-    setThreadId(thread);
-    setMobile(false);
-    history.replaceState(
-      null,
-      "",
-      "/?room=" + encodeURIComponent(id) + (thread ? "&thread=" + thread : ""),
-    );
+    const update = () => {
+      setChannelTab("chat");
+      setRoomId(id);
+      setThreadId(thread);
+      setMobile(false);
+      history.replaceState(
+        null,
+        "",
+        "/?room=" +
+          encodeURIComponent(id) +
+          (thread ? "&thread=" + thread : ""),
+      );
+    };
+    if (id !== roomId) transitionContent(update);
+    else update();
   }
   function openThread(m: TeamMessage) {
     restoreThreadFocus.current = false;
@@ -758,19 +766,13 @@ export function TeamWorkspaceApp({
           ))}
       </nav>
       <div className="team-account">
-        <button
-          onClick={() => setSettings(true)}
-          className="team-profile"
-          aria-label="Profile settings"
-        >
-          <PersonAvatar person={me} />
-          <span>{me.name}</span>
-        </button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Workspace menu">
-              <ChevronDown />
-            </Button>
+            <button className="team-profile" aria-label="Account menu">
+              <PersonAvatar person={me} />
+              <span className="team-account-name">{me.name}</span>
+              <ChevronDown aria-hidden="true" />
+            </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             className="team-account-menu"
@@ -832,7 +834,7 @@ export function TeamWorkspaceApp({
           >
             <PanelLeft />
           </Button>
-          <div className="team-heading">
+          <div className="team-heading" title={current?.topic}>
             {current &&
               (current.kind === "channel" ? (
                 current.private ? (
@@ -855,8 +857,38 @@ export function TeamWorkspaceApp({
             >
               {current ? roomName(current, me.id) : "Conversations"}
             </button>
-            <span>{current?.topic}</span>
+            {current?.kind !== "channel" && <span>{current?.topic}</span>}
           </div>
+          {current?.kind === "channel" && !focusedThread && (
+            <nav className="channel-tabs" aria-label="Channel sections">
+              {["chat", "notes", "files", "issues", "timer", "data"].map(
+                (tab) => (
+                  <button
+                    key={tab}
+                    aria-current={channelTab === tab ? "page" : undefined}
+                    onClick={() => {
+                      transitionContent(() => {
+                        setChannelTab(tab);
+                        setThreadId(null);
+                      });
+                    }}
+                  >
+                    {tab === "chat"
+                      ? "Chat"
+                      : tab === "notes"
+                        ? "Notes"
+                        : tab === "files"
+                          ? "Files"
+                          : tab === "issues"
+                            ? "Issues"
+                            : tab === "timer"
+                              ? "Timer"
+                              : "Data"}
+                  </button>
+                ),
+              )}
+            </nav>
+          )}
           <div className="team-top-actions">
             {current?.kind === "channel" && (
               <Button
@@ -911,34 +943,6 @@ export function TeamWorkspaceApp({
             </Button>
           </div>
         </header>
-        {current?.kind === "channel" && !focusedThread && (
-          <nav className="channel-tabs" aria-label="Channel sections">
-            {["chat", "notes", "files", "issues", "timer", "data"].map(
-              (tab) => (
-                <button
-                  key={tab}
-                  aria-current={channelTab === tab ? "page" : undefined}
-                  onClick={() => {
-                    setChannelTab(tab);
-                    setThreadId(null);
-                  }}
-                >
-                  {tab === "chat"
-                    ? "Chat"
-                    : tab === "notes"
-                      ? "Notes"
-                      : tab === "files"
-                        ? "Files"
-                        : tab === "issues"
-                          ? "Issues"
-                          : tab === "timer"
-                            ? "Timer"
-                            : "Data"}
-                </button>
-              ),
-            )}
-          </nav>
-        )}
         {!!current?.casual && (
           <CasualSuggestions
             key={roomId}
@@ -947,7 +951,76 @@ export function TeamWorkspaceApp({
             onCreate={proposeChannel}
           />
         )}
-        <div className="team-conversation-layout">
+        <ConversationLayout
+          open={!!threadId}
+          focused={!!focusedThread}
+          thread={
+            <AnimatePresence initial={false} onExitComplete={afterThreadClose}>
+              {threadId && current && (
+                <ThreadPanel
+                  key="thread"
+                  focused={!!focusedThread}
+                  onClose={closeThread}
+                >
+                  <header>
+                    <strong>Thread</strong>
+                    <ThreadControls
+                      id={threadId}
+                      roomId={roomId}
+                      people={current.members}
+                      focused={!!focusedThread}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Close thread"
+                      onClick={closeThread}
+                    >
+                      <X />
+                    </Button>
+                  </header>
+                  <motion.div
+                    className="thread-panel-content"
+                    key={threadId}
+                    initial={{ opacity: reducedMotion ? 1 : 0.6 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: reducedMotion ? 0 : 0.14 }}
+                  >
+                    {root && root.id === threadId && root.room_id === roomId ? (
+                      <ChatTimeline
+                        messages={[root, ...visibleReplies]}
+                        onRetry={retryMessage}
+                        me={me}
+                        hasMore={replies.hasMore}
+                        onOlder={() => void older(true)}
+                        onThread={() => {}}
+                        onChange={() => latestRefresh.current()}
+                        onSaveNote={
+                          current.kind === "channel" && current.joined
+                            ? saveMessageNote
+                            : undefined
+                        }
+                        thread
+                      />
+                    ) : (
+                      <MessagesSkeleton />
+                    )}
+                    {current.joined && (
+                      <ChatComposer
+                        key={roomId + threadId}
+                        roomId={roomId}
+                        parentId={threadId}
+                        people={current.members}
+                        label="Reply in thread"
+                        onSend={sendDraft}
+                      />
+                    )}
+                  </motion.div>
+                </ThreadPanel>
+              )}
+            </AnimatePresence>
+          }
+        >
           <section
             className="team-channel"
             style={
@@ -1048,71 +1121,7 @@ export function TeamWorkspaceApp({
               onThread={(id) => choose(roomId, id)}
             />
           )}
-          <AnimatePresence initial={false} onExitComplete={afterThreadClose}>
-            {threadId && current && (
-              <ThreadPanel
-                key="thread"
-                focused={!!focusedThread}
-                onClose={closeThread}
-              >
-                <header>
-                  <strong>Thread</strong>
-                  <ThreadControls
-                    id={threadId}
-                    roomId={roomId}
-                    people={current.members}
-                    focused={!!focusedThread}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Close thread"
-                    onClick={closeThread}
-                  >
-                    <X />
-                  </Button>
-                </header>
-                <motion.div
-                  className="thread-panel-content"
-                  key={threadId}
-                  initial={{ opacity: reducedMotion ? 1 : 0.6 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: reducedMotion ? 0 : 0.14 }}
-                >
-                  {root && root.id === threadId && root.room_id === roomId ? (
-                    <ChatTimeline
-                      messages={[root, ...visibleReplies]}
-                      onRetry={retryMessage}
-                      me={me}
-                      hasMore={replies.hasMore}
-                      onOlder={() => void older(true)}
-                      onThread={() => {}}
-                      onChange={() => latestRefresh.current()}
-                      onSaveNote={
-                        current.kind === "channel" && current.joined
-                          ? saveMessageNote
-                          : undefined
-                      }
-                      thread
-                    />
-                  ) : (
-                    <MessagesSkeleton />
-                  )}
-                  {current.joined && (
-                    <ChatComposer
-                      key={roomId + threadId}
-                      roomId={roomId}
-                      parentId={threadId}
-                      people={current.members}
-                      label="Reply in thread"
-                      onSend={sendDraft}
-                    />
-                  )}
-                </motion.div>
-              </ThreadPanel>
-            )}
-          </AnimatePresence>
-        </div>
+        </ConversationLayout>
       </main>
       {current && (
         <>

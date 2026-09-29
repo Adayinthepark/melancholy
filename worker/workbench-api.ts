@@ -59,8 +59,23 @@ export async function workbench(
       return json(input);
     }
   }
-  if (path === "/api/chat/avatar" && ["POST", "DELETE"].includes(method)) {
+  const botAvatar = path.match(/^\/api\/chat\/bots\/([^/]+)\/avatar$/);
+  if (
+    (path === "/api/chat/avatar" || botAvatar) &&
+    ["POST", "DELETE"].includes(method)
+  ) {
     human(who);
+    let target: { id: string; avatar_key?: string | null } = who;
+    if (botAvatar) {
+      admin(who);
+      const bot = await env.DB.prepare(
+        "SELECT id,avatar_key FROM people WHERE id=? AND kind='bot' AND active=1",
+      )
+        .bind(botAvatar[1])
+        .first<{ id: string; avatar_key: string | null }>();
+      if (!bot) throw new ChatError(404, "Bot not found.");
+      target = bot;
+    }
     let avatar: string | null = null;
     if (method === "POST") {
       const data = await bytes(request, 2 * 1024 * 1024);
@@ -81,15 +96,17 @@ export async function workbench(
           "Choose a PNG, JPEG or WebP image, up to 2 MB.",
         );
       avatar = crypto.randomUUID();
-      await env.FILES.put("avatars/" + who.id + "/" + avatar, data, {
+      await env.FILES.put("avatars/" + target.id + "/" + avatar, data, {
         httpMetadata: { contentType: type! },
       });
     }
     await env.DB.prepare("UPDATE people SET avatar_key=? WHERE id=?")
-      .bind(avatar, who.id)
+      .bind(avatar, target.id)
       .run();
-    if (who.avatar_key)
-      waitUntil(env.FILES.delete("avatars/" + who.id + "/" + who.avatar_key));
+    if (target.avatar_key)
+      waitUntil(
+        env.FILES.delete("avatars/" + target.id + "/" + target.avatar_key),
+      );
     return json({ avatar_key: avatar });
   }
   const avatar = path.match(/^\/api\/chat\/avatars\/([^/]+)\/([a-f0-9-]+)$/);

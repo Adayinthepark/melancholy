@@ -81,8 +81,9 @@ test("profile, Inter, named mentions, server rename and focused thread work acro
   try {
     await page.goto("/?room=" + id);
     await page
-      .getByRole("button", { name: "Profile settings", exact: true })
+      .getByRole("button", { name: "Account menu", exact: true })
       .click();
+    await page.getByRole("menuitem", { name: "Profile", exact: true }).click();
     await page.getByLabel("Your username").fill(newHandle);
     await page
       .getByLabel("Display name", { exact: true })

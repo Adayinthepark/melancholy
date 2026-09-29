@@ -2,6 +2,14 @@
 import { useRef, useState } from "react";
 import { ArrowUp, AtSign, Paperclip, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Attachment as FileAttachment,
+  AttachmentMedia,
+  AttachmentContent,
+  AttachmentTitle,
+  AttachmentActions,
+  AttachmentAction,
+} from "./ui/attachment";
 import { Button } from "@/components/ui/button";
 import {
   InputGroup,
@@ -141,17 +149,24 @@ export function ChatComposer({
       {files.length > 0 && (
         <div className="composer-files">
           {files.map((f) => (
-            <span key={f.id}>
-              {f.name}
-              <Button
-                size="icon-xs"
-                variant="ghost"
-                aria-label={"Remove " + f.name}
-                onClick={() => setFiles(files.filter((x) => x.id !== f.id))}
-              >
-                <X />
-              </Button>
-            </span>
+            <FileAttachment key={f.id} size="xs">
+              <AttachmentMedia>
+                <Paperclip />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>{f.name}</AttachmentTitle>
+              </AttachmentContent>
+              <AttachmentActions>
+                <AttachmentAction
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={"Remove " + f.name}
+                  onClick={() => setFiles(files.filter((x) => x.id !== f.id))}
+                >
+                  <X />
+                </AttachmentAction>
+              </AttachmentActions>
+            </FileAttachment>
           ))}
         </div>
       )}

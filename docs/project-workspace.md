@@ -82,3 +82,23 @@ Files 索引频道消息关联的 R2 附件，不扫描整个 bucket。草稿附
 频道现有 **Data** 标签。默认 Project 数据库的 notes 集合与 Notes 页面共享数据，
 files 集合维护已发布 R2 附件索引。也可创建多个独立数据库、定义 JSON 集合，
 并使用限权 API Token 接入外部系统。参见[频道数据库与完整 API](channel-databases.md)。
+
+## 编辑与布局
+
+- 频道标题和 Chat / Notes / Files / Issues / Timer / Data 在桌面共用一条顶栏；手机将标签放到可横向滚动的一行。
+- 账户头像、名字与箭头是同一个下拉入口，包含 Profile、Workspace 和 Sign out。
+- 桌面线程的分隔线支持拖动，也可以聚焦后用方向键调整；宽度保存在当前浏览器。手机仍使用覆盖主聊天区域的线程。
+- 内容切换使用短淡入淡出，保留标签中的草稿和编辑器；遵循系统的减少动态效果设置。
+- Timer 使用日历选日期、时间输入框选时刻，按浏览器本地时区解释。
+
+### Notes 编辑器选择
+
+Notes 使用按需加载的 [CodeMirror 6](https://codemirror.net/docs/guide/) Markdown 编辑器，提供语法高亮、格式工具栏、撤销／重做、字符计数和独立预览。编辑和预览之间切换不会清空撤销历史。内容仍是原始 Markdown，现有 API、版本冲突保护、来源链接和数据库记录保持兼容。
+
+比较过 [Tiptap](https://tiptap.dev/docs/editor/getting-started/overview) 与 [Lexical](https://lexical.dev/docs/intro)：Tiptap 的 ProseMirror 扩展适合完整富文本编辑；Lexical 的核心模块化，但富文本与 Markdown 之间仍需导入导出规则。CodeMirror 直接编辑文本，只接入 Markdown、历史和快捷键模块，适合当前 Notes 的需要。这里没有提供所见即所得编辑；预览显示 Markdown 的最终效果。编辑器通过独立 chunk 加载，普通聊天不需要下载它。
+
+### Bot 头像
+
+管理员进入 **Workspace settings → Bots → Avatar**，可上传、预览、保存或移除头像，适用于 Server、Cloudflare 和 API Bot。支持 PNG、JPEG、WebP，最大 2 MB；未设置或加载失败时显示名称缩写。所有展示使用 shadcn Avatar。
+
+头像存于私有 R2，并经登录后的 API 读取。修改接口为 `POST /api/chat/bots/:id/avatar`（请求体为图片、Content-Type 为图片类型），移除使用 `DELETE`。只有工作区管理员可以修改活跃 Bot 的头像，普通成员和 Bot Token 无此权限。

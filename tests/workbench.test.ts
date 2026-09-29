@@ -303,6 +303,61 @@ describe("workbench identity and mentions", () => {
     await request("/api/chat/avatar", m.cookie, "DELETE");
     expect((await request(path, owner)).status).toBe(404);
   });
+  it("limits bot avatar changes to owners and keeps images private", async () => {
+    const owner = await login(),
+      m = await member(owner);
+    const bot = (await (
+      await request("/api/chat/bots", owner, "POST", {
+        name: "Avatar bot",
+        handle: "avatar" + crypto.randomUUID().slice(0, 8),
+      })
+    ).json()) as { id: string };
+    const token = (await (
+      await request("/api/chat/tokens", owner, "POST", {
+        botId: bot.id,
+        kind: "api",
+      })
+    ).json()) as { token: string };
+    const path = `/api/chat/bots/${bot.id}/avatar`;
+    const upload = (
+      cookie: string,
+      data: Uint8Array<ArrayBuffer> | string,
+      type = "image/png",
+    ) =>
+      handleApi(
+        new Request(origin + path, {
+          method: "POST",
+          headers: { Cookie: cookie, Origin: origin, "Content-Type": type },
+          body: data,
+        }),
+      );
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    expect((await upload(m.cookie, png)).status).toBe(403);
+    expect(
+      (await request(path, "", "DELETE", undefined, token.token)).status,
+    ).toBe(403);
+    expect((await upload(owner, "<svg/>", "image/svg+xml")).status).toBe(400);
+    expect((await upload(owner, "not an image")).status).toBe(400);
+    expect(
+      (await upload(owner, new Uint8Array(2 * 1024 * 1024 + 1))).status,
+    ).toBe(413);
+    const uploaded = await upload(owner, png);
+    expect(uploaded.status).toBe(200);
+    const { avatar_key } = (await uploaded.json()) as { avatar_key: string };
+    const imagePath = `/api/chat/avatars/${bot.id}/${avatar_key}`;
+    expect((await request(imagePath)).status).toBe(401);
+    expect((await request(imagePath, m.cookie)).status).toBe(200);
+    expect(
+      (await workspace(owner)).people.find((p) => p.id === bot.id)?.avatar_key,
+    ).toBe(avatar_key);
+    expect(
+      (await request(`/api/chat/bots/${m.person.id}/avatar`, owner, "DELETE"))
+        .status,
+    ).toBe(404);
+    expect((await request(path, m.cookie, "DELETE")).status).toBe(403);
+    expect((await request(path, owner, "DELETE")).status).toBe(200);
+    expect((await request(imagePath, owner)).status).toBe(404);
+  });
 });
 describe("connections, GitHub and task credentials", () => {
   it("creates and replaces a Cloudflare credential using native Workers requests", async () => {

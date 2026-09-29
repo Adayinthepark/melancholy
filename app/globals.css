@@ -776,7 +776,7 @@
 .team-profile:hover {
   background: var(--accent);
 }
-.team-profile > span:last-child {
+.team-profile > .team-account-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2246,27 +2246,15 @@
   font-size: 12px;
   line-height: 1.7;
 }
-.credential-guide summary {
-  display: flex;
+.credential-guide [data-slot="accordion-trigger"] {
   align-items: center;
   gap: 8px;
-  padding: 13px 0;
-  cursor: pointer;
-  color: var(--foreground);
 }
-.credential-guide summary::after {
-  content: "+";
-  margin-left: auto;
-  color: var(--muted-foreground);
+.credential-guide [data-slot="accordion-trigger"] > span {
+  flex: 1;
 }
-.credential-guide[open] summary::after {
-  content: "−";
-}
-.credential-guide summary::-webkit-details-marker {
-  display: none;
-}
-.credential-guide > div {
-  padding: 0 0 18px 24px;
+.credential-guide [data-slot="accordion-content"] > div {
+  padding: 0 0 16px 24px;
   max-width: 700px;
 }
 .credential-guide ol {
@@ -2752,5 +2740,194 @@
   }
   .database-records .project-toolbar {
     flex-wrap: wrap;
+  }
+}
+
+/* Compact project header, shared file surfaces and persistent split panes. */
+.team-profile {
+  width: 100%;
+}
+.team-account-name {
+  flex: 1;
+}
+.team-profile > svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.team-topbar {
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+  padding-inline: 16px;
+}
+.team-topbar:has(.channel-tabs) .team-heading {
+  max-width: 180px;
+  flex-shrink: 1;
+  gap: 6px;
+}
+.team-topbar .channel-tabs {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  gap: 0;
+  align-self: stretch;
+}
+.team-topbar .channel-tabs button {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.team-topbar .team-top-actions {
+  gap: 2px;
+  margin-left: auto;
+}
+.conversation-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.thread-split-panel {
+  min-width: 0;
+  min-height: 0;
+}
+.thread-resize-handle {
+  flex-shrink: 0;
+}
+.thread-panel-frame .team-thread {
+  border-left: 0;
+}
+.bot-avatar-preview {
+  width: 48px;
+  height: 48px;
+}
+.date-time-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.date-time-picker input {
+  width: 120px;
+}
+.channel-file {
+  width: 100%;
+}
+.channel-file [data-slot="attachment-actions"] {
+  gap: 4px;
+}
+.markdown-editor {
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.markdown-editor:focus-within {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.markdown-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+}
+.markdown-editor .cm-editor {
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 13px;
+}
+.markdown-editor .cm-editor.cm-focused {
+  outline: none;
+}
+.markdown-editor .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.7;
+  max-height: 60dvh;
+  overflow: auto;
+}
+.markdown-editor .cm-content {
+  min-height: 260px;
+  padding: 12px;
+  caret-color: var(--foreground);
+}
+.markdown-editor .cm-cursor {
+  border-left-color: var(--foreground);
+}
+.markdown-editor .cm-selectionBackground,
+.markdown-editor .cm-content ::selection {
+  background: var(--accent);
+}
+.markdown-editor-count {
+  padding: 4px 10px;
+  text-align: right;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+@media (max-width: 1100px) and (min-width: 761px) {
+  .team-topbar:has(.channel-tabs) {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+  .team-topbar:has(.channel-tabs) .team-heading {
+    max-width: 130px;
+  }
+  .team-topbar .channel-tabs button {
+    padding-inline: 7px;
+  }
+}
+@media (max-width: 760px) {
+  .team-topbar:has(.channel-tabs) {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 48px;
+    padding: 5px 10px 0;
+    gap: 2px 6px;
+  }
+  .team-topbar:has(.channel-tabs) .team-heading {
+    max-width: calc(100% - 50px);
+    flex: 1;
+  }
+  .team-topbar .channel-tabs {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .team-topbar .team-top-actions {
+    gap: 0;
+  }
+  .thread-split-panel:has(.thread-panel-frame) {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    height: 100%;
+    z-index: 2;
+  }
+  .thread-resize-handle {
+    display: none;
+  }
+  .channel-file [data-slot="attachment-actions"] {
+    margin-left: auto;
+  }
+}
+
+.team-conversation-layout {
+  view-transition-name: conversation-content;
+}
+::view-transition-group(conversation-content) {
+  animation-duration: 180ms;
+}
+::view-transition-old(conversation-content),
+::view-transition-new(conversation-content) {
+  animation-duration: 180ms;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }

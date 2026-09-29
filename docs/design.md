@@ -86,9 +86,11 @@ outer workspace gutter and retain a full-width conversation.
 
 ## Interaction motion
 
-Use Motion for a 240 ms thread expansion/collapse, keeping the channel mounted
-and the thread text at its final width to avoid squeezing every line. Phone
-threads slide over the channel; closing reveals the existing scroll position.
+Desktop threads use shadcn Resizable, with pointer and keyboard adjustment and
+browser-local width persistence. Motion adds a short opacity transition while
+the channel and its composer stay mounted. Phone threads slide over the channel;
+closing reveals the existing scroll position. Channel and content-tab navigation
+uses a 180 ms View Transition where supported; the editor remains mounted.
 Thread switches and settings navigation use a short opacity transition without
 moving headings or replaying the whole message history. No idle animation loops.
 

@@ -68,8 +68,9 @@ test("Casual settings and channel Notes, Files, Issues and Timer on desktop and 
     .fill("## Decision\nUse a private R2 bucket.");
   await sections.getByRole("button", { name: "Chat", exact: true }).click();
   await sections.getByRole("button", { name: "Notes", exact: true }).click();
-  await expect(page.getByLabel("Content · Markdown")).toHaveValue(
+  await expect(page.getByLabel("Content · Markdown")).toHaveText(
     "## Decision\nUse a private R2 bucket.",
+    { useInnerText: true },
   );
   await page.getByRole("button", { name: "Preview", exact: true }).click();
   await expect(
@@ -105,7 +106,23 @@ test("Casual settings and channel Notes, Files, Issues and Timer on desktop and 
     .fill("Read the project notes and summarize next steps.");
   await page.getByLabel("Agent", { exact: true }).click();
   await page.getByRole("option", { name: server.name, exact: true }).click();
+  await page
+    .getByRole("button", { name: "First run date", exact: true })
+    .click();
+  const calendar = page.getByLabel("First run calendar", { exact: true });
+  await calendar.getByRole("button", { name: "Go to the Next Month" }).click();
+  const date = new Date();
+  date.setMonth(date.getMonth() + 1, 15);
+  date.setHours(10, 15, 0, 0);
+  await calendar
+    .locator(`[data-day="${date.toLocaleDateString("en-US")}"]`)
+    .click();
+  await page.getByLabel("First run time", { exact: true }).fill("10:15");
+  const timerRequest = page.waitForRequest(
+    (r) => r.url().endsWith("/timers") && r.method() === "POST",
+  );
   await page.getByRole("button", { name: "Create timer", exact: true }).click();
+  expect((await timerRequest).postDataJSON().nextAt).toBe(date.getTime());
   await expect(
     page.getByText("Review tomorrow", { exact: true }),
   ).toBeVisible();
@@ -142,6 +159,13 @@ test("Casual settings and channel Notes, Files, Issues and Timer on desktop and 
           await expect(
             page.getByText("Review tomorrow", { exact: true }),
           ).toBeVisible();
+        await page.evaluate(() =>
+          Promise.all(
+            document
+              .getAnimations()
+              .map((animation) => animation.finished.catch(() => {})),
+          ),
+        );
         await page.screenshot({
           path:
             "/tmp/melancholy-project-" +

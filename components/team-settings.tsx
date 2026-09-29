@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { BotAvatarEditor } from "./bot-avatar-editor";
 import { PersonAvatar } from "./person-avatar";
 import { api, post } from "@/lib/client";
 import type { TeamWorkspace } from "@/lib/chat";
@@ -412,6 +413,7 @@ export function TeamSettings({
                       ? "Server"
                       : "API"}
                 </Badge>
+                <BotAvatarEditor person={p} onChange={onChange} />
                 {!!p.cloud_agent && (
                   <Button
                     variant="ghost"

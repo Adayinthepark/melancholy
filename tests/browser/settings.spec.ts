@@ -27,8 +27,9 @@ test("workspace settings are separate from profiles and manage encrypted credent
   try {
     await page.goto("/");
     await page
-      .getByRole("button", { name: "Profile settings", exact: true })
+      .getByRole("button", { name: "Account menu", exact: true })
       .click();
+    await page.getByRole("menuitem", { name: "Profile", exact: true }).click();
     await expect(page.getByRole("dialog")).toContainText("Profile settings");
     await expect(
       page.getByLabel("Display name", { exact: true }),
@@ -38,7 +39,7 @@ test("workspace settings are separate from profiles and manage encrypted credent
     ).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page
-      .getByRole("button", { name: "Workspace menu", exact: true })
+      .getByRole("button", { name: "Account menu", exact: true })
       .click();
     await page
       .getByRole("menuitem", { name: "Workspace", exact: true })
@@ -259,9 +260,8 @@ test("members can edit their profile but cannot open workspace administration", 
   await page
     .getByRole("link", { name: "Back to workspace", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Profile settings", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Account menu", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Profile", exact: true }).click();
   await expect(page.getByLabel("Display name", { exact: true })).toHaveValue(
     "Settings member",
   );

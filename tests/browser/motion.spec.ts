@@ -64,10 +64,31 @@ for (const mode of ["desktop", "phone", "reduced"] as const) {
     const target = await page
       .locator(".thread-panel-frame")
       .evaluate((e) => e.getBoundingClientRect().width);
-    if (mode === "desktop")
-      expect(samples.some((width) => width > 1 && width < target - 1)).toBe(
-        true,
-      );
+    let savedWidth = target;
+    if (mode === "desktop") {
+      const divider = page.getByRole("separator", { name: "Resize thread" });
+      await expect(divider).toBeVisible();
+      const box = (await divider.boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x - 120, box.y + box.height / 2, { steps: 12 });
+      await page.mouse.up();
+      const resized = await page
+        .locator(".thread-panel-frame")
+        .evaluate((e) => e.getBoundingClientRect().width);
+      expect(resized).toBeGreaterThan(target + 80);
+      await divider.focus();
+      await page.keyboard.press("ArrowRight");
+      expect(
+        await page
+          .locator(".thread-panel-frame")
+          .evaluate((e) => e.getBoundingClientRect().width),
+      ).toBeLessThan(resized);
+      savedWidth = await page
+        .locator(".thread-panel-frame")
+        .evaluate((e) => e.getBoundingClientRect().width);
+      await page.getByLabel("Thread reply").focus();
+    }
     if (mode === "reduced")
       expect(
         samples.every((width) => width === 0 || Math.abs(width - target) < 1),
@@ -91,6 +112,16 @@ for (const mode of ["desktop", "phone", "reduced"] as const) {
     ).toBe(true);
     // Reopen while closing; a pending exit must not unmount the new selection.
     await trigger.click();
+    if (mode === "desktop")
+      await expect
+        .poll(async () =>
+          Math.abs(
+            (await page
+              .locator(".thread-panel-frame")
+              .evaluate((e) => e.getBoundingClientRect().width)) - savedWidth,
+          ),
+        )
+        .toBeLessThan(2);
     await expect(
       page.getByRole("button", { name: "Close thread", exact: true }),
     ).toBeVisible();
@@ -124,6 +155,20 @@ for (const mode of ["desktop", "phone", "reduced"] as const) {
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
+    if (mode === "desktop") {
+      await page.reload();
+      await first.hover();
+      await trigger.click();
+      await expect
+        .poll(async () =>
+          Math.abs(
+            (await page
+              .locator(".thread-panel-frame")
+              .evaluate((e) => e.getBoundingClientRect().width)) - savedWidth,
+          ),
+        )
+        .toBeLessThan(2);
+    }
     expect(errors).toEqual([]);
   });
 }
@@ -135,7 +180,9 @@ test("credential instructions are available beside the list and inside the form"
   await page.setViewportSize({ width: 390, height: 950 });
   for (const provider of ["github", "cloudflare"]) {
     await page.goto("/settings/workspace/" + provider);
-    await page.locator(".credential-guide summary").click();
+    await page
+      .locator(".credential-guide [data-slot=accordion-trigger]")
+      .click();
     const guide = page.locator(".credential-guide");
     await expect(guide).toContainText(
       provider === "github" ? "Issues: Read and write" : "D1: Edit",

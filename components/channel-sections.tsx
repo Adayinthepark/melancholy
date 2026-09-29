@@ -1,5 +1,16 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
+import { DateTimePicker } from "./date-time-picker";
+import {
+  Attachment as FileAttachment,
+  AttachmentMedia,
+  AttachmentContent,
+  AttachmentTitle,
+  AttachmentDescription,
+  AttachmentActions,
+  AttachmentAction,
+} from "./ui/attachment";
+import { Marker, MarkerContent } from "./ui/marker";
 import { toast } from "sonner";
 import { FileText, Download, Plus, Clock } from "lucide-react";
 import { api, post } from "@/lib/client";
@@ -14,6 +25,7 @@ import { Choice } from "./team-settings";
 import { MessageMarkdown } from "./message-markdown";
 import { ChannelDatabases } from "./channel-databases";
 import { ChannelWorkbench } from "./channel-workbench";
+const MarkdownEditor = lazy(() => import("./markdown-editor"));
 export function ChannelSections({
   tab,
   room,
@@ -263,19 +275,16 @@ function ChannelNotes({
                       {preview ? "Edit text" : "Preview"}
                     </Button>
                   </div>
-                  {preview ? (
-                    <div className="note-preview">
-                      <MessageMarkdown text={content} />
-                    </div>
-                  ) : (
-                    <Textarea
-                      id="note-content"
-                      value={content}
-                      onChange={(e) => setContent(e.target.value)}
-                      rows={16}
-                      maxLength={100000}
-                    />
-                  )}
+                  <div hidden={!preview} className="note-preview">
+                    <MessageMarkdown text={content} />
+                  </div>
+                  <div hidden={preview}>
+                    <Suspense
+                      fallback={<p className="project-help">Loading editor…</p>}
+                    >
+                      <MarkdownEditor value={content} onChange={setContent} />
+                    </Suspense>
+                  </div>
                 </Field>
                 <div className="flex gap-2">
                   <Button disabled={busy}>Save note</Button>
@@ -445,42 +454,54 @@ function ChannelFiles({
       )}
       <div className="project-file-list">
         {files.map((f) => (
-          <div className="project-row" key={f.id}>
-            <FileText size={18} />
-            <div className="project-row-main">
-              <a href={"/api/chat/files/" + f.id} download={f.name}>
-                {f.name}
-              </a>
-              <small>
+          <FileAttachment className="channel-file" size="sm" key={f.id}>
+            <AttachmentMedia>
+              <FileText />
+            </AttachmentMedia>
+            <AttachmentContent>
+              <AttachmentTitle>
+                <a href={"/api/chat/files/" + f.id} download={f.name}>
+                  {f.name}
+                </a>
+              </AttachmentTitle>
+              <AttachmentDescription>
                 {f.size < 1024
                   ? f.size + " B"
                   : f.size < 1024 * 1024
                     ? (f.size / 1024).toFixed(1) + " KB"
                     : (f.size / 1024 / 1024).toFixed(1) + " MB"}{" "}
                 · {new Date(f.created_at).toLocaleDateString()}
-              </small>
-            </div>
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={() => onThread(f.parent_id || f.message_id)}
-            >
-              View message
-            </Button>
-            <a
-              href={"/api/chat/files/" + f.id}
-              download={f.name}
-              aria-label={"Download " + f.name}
-            >
-              <Download size={16} />
-            </a>
-          </div>
+              </AttachmentDescription>
+            </AttachmentContent>
+            <AttachmentActions>
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={() => onThread(f.parent_id || f.message_id)}
+              >
+                View message
+              </Button>
+              <AttachmentAction asChild>
+                <a
+                  href={"/api/chat/files/" + f.id}
+                  download={f.name}
+                  aria-label={"Download " + f.name}
+                >
+                  <Download />
+                </a>
+              </AttachmentAction>
+            </AttachmentActions>
+          </FileAttachment>
         ))}
       </div>
       {loading ? (
-        <p className="project-help">Loading files…</p>
+        <Marker role="status">
+          <MarkerContent>Loading files…</MarkerContent>
+        </Marker>
       ) : !files.length && !error ? (
-        <p className="project-help">No files shared yet.</p>
+        <Marker>
+          <MarkerContent>No files shared yet.</MarkerContent>
+        </Marker>
       ) : null}
       {next && (
         <Button
@@ -635,12 +656,10 @@ function ChannelTimers({
                 <FieldLabel htmlFor="timer-when">
                   First run · your local time
                 </FieldLabel>
-                <Input
+                <DateTimePicker
                   id="timer-when"
-                  type="datetime-local"
                   value={when}
-                  onChange={(e) => setWhen(e.target.value)}
-                  required
+                  onChange={setWhen}
                 />
               </Field>
               <Field>

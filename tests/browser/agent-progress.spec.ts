@@ -158,6 +158,9 @@ test("sending, queued follow-ups, running and waiting remain visible and recover
     await page.reload();
     await expect(progress).toContainText("Waiting for input");
     await emit({ type: "completed" });
+    await expect(
+      page.locator('.agent-action-dot[data-state="running"]'),
+    ).toHaveCount(0);
     await expect.poll(() => jobs.length, { timeout: 15000 }).toBe(2);
     seq = 0;
     await emit({ type: "started", sessionId: "progress-session" });

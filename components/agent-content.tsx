@@ -58,7 +58,9 @@ export function AgentAction({
       <summary>
         <ChevronRight aria-hidden="true" />
         <span>{part.title}</span>
-        <span className="agent-action-status">{part.status}</span>
+        <span className="agent-action-status">
+          {part.status === "unknown" ? "No result recorded" : part.status}
+        </span>
       </summary>
       <pre>
         {part.title}
@@ -69,11 +71,21 @@ export function AgentAction({
 }
 export function AgentActions({
   parts,
+  runStatus,
 }: {
   parts: Extract<AgentPart, { type: "activity" }>[];
+  runStatus: string | null;
 }) {
   if (!parts.length) return null;
-  const states = parts.map((p) =>
+  // A task can stop before its last tool sends a result. Keep that distinction
+  // without leaving a historical operation blinking as if it were still live.
+  const ended = ["completed", "failed", "cancelled"].includes(runStatus || "");
+  const displayed = parts.map((part) =>
+    ended && ["running", "pending", "queued"].includes(part.status)
+      ? { ...part, status: runStatus === "completed" ? "unknown" : "stopped" }
+      : part,
+  );
+  const states = displayed.map((p) =>
     ["completed", "succeeded", "success"].includes(p.status)
       ? "succeeded"
       : ["failed", "error"].includes(p.status)
@@ -82,7 +94,7 @@ export function AgentActions({
           ? "running"
           : ["pending", "queued"].includes(p.status)
             ? "queued"
-            : ["cancelled", "canceled"].includes(p.status)
+            : ["cancelled", "canceled", "stopped"].includes(p.status)
               ? "stopped"
               : "unknown",
   );
@@ -125,7 +137,7 @@ export function AgentActions({
             </DialogDescription>
           </DialogHeader>
           <div className="agent-actions-list">
-            {parts.map((p) => (
+            {displayed.map((p) => (
               <AgentAction key={p.id} part={p} />
             ))}
           </div>
@@ -442,7 +454,11 @@ export function AgentContent({
             />
           </div>
         ) : p.type === "actions" ? (
-          <AgentActions key={p.id} parts={p.parts} />
+          <AgentActions
+            key={p.id}
+            parts={p.parts}
+            runStatus={message.run_status}
+          />
         ) : p.type === "artifact" ? (
           <DeliveredArtifact
             key={p.id}

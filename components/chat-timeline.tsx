@@ -342,6 +342,7 @@ export function ChatRow({
                   )}
                   {!hasParts && (
                     <AgentActions
+                      runStatus={m.run_status}
                       parts={m.activity.map((a) => ({
                         ...a,
                         type: "activity" as const,

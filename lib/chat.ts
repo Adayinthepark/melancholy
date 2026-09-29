@@ -28,6 +28,8 @@ export type Room = {
 };
 export type Reaction = { emoji: string; count: number; mine: boolean };
 export type TeamMessage = {
+  unread?: boolean;
+  mentioned?: boolean | number;
   id: string;
   seq: number;
   room_id: string;
@@ -63,4 +65,11 @@ export type MessagePage = {
   messages: TeamMessage[];
   hasMore: boolean;
   latest: number;
+  hasNewer?: boolean;
+};
+export type InboxPage = {
+  messages: TeamMessage[];
+  hasMore: boolean;
+  before: number | null;
+  through: number;
 };

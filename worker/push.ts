@@ -134,7 +134,8 @@ export async function drainPush(env: Cloudflare.Env) {
           JOIN chat_messages m ON m.id=? AND m.deleted_at IS NULL
           JOIN room_members rm ON rm.room_id=m.room_id AND rm.person_id=s.person_id
           WHERE s.id=? AND login.expires_at>? AND (m.run_id IS NOT NULL OR m.seq>COALESCE(
-            (SELECT last_seq FROM room_reads WHERE room_id=m.room_id AND person_id=s.person_id),0))`,
+            (SELECT last_seq FROM room_reads WHERE room_id=m.room_id AND person_id=s.person_id),0))
+          AND (m.run_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM message_reads mr WHERE mr.message_id=m.id AND mr.person_id=s.person_id))`,
           )
             .bind(item.message_id, item.subscription_id, now)
             .first<

@@ -1,7 +1,8 @@
 "use client";
-import { AgentContent, AgentAction } from "./agent-content";
+import { AgentContent, AgentActions } from "./agent-content";
 import { AnimatedIcon } from "./animated-icon";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { MessageReadTracker } from "./message-read-tracker";
 import { MessageMarkdown } from "./message-markdown";
 import { PersonAvatar } from "./person-avatar";
 import { mentionText, encodeMentions } from "@/lib/mentions";
@@ -31,6 +32,7 @@ import {
   MessageScrollerContent,
   MessageScrollerItem,
   MessageScrollerButton,
+  useMessageScroller,
 } from "@/components/ui/message-scroller";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import {
@@ -73,6 +75,10 @@ export function ChatTimeline({
   thread = false,
   unreadAfter = 0,
   onRetry,
+  onRead,
+  focusMessage,
+  hasNewer,
+  onLatest,
 }: {
   messages: TeamMessage[];
   me: Person;
@@ -84,14 +90,19 @@ export function ChatTimeline({
   thread?: boolean;
   unreadAfter?: number;
   onRetry?: (message: TeamMessage) => void;
+  onRead?: (ids: string[]) => Promise<void>;
+  focusMessage?: string | null;
+  hasNewer?: boolean;
+  onLatest?: () => void;
 }) {
+  const viewport = useRef<HTMLDivElement>(null);
   const firstUnread = unreadAfter
     ? messages.find((m) => m.seq > unreadAfter && m.author_id !== me.id)?.id
     : null;
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <MessageScroller className="chat-scroll">
-        <MessageScrollerViewport>
+        <MessageScrollerViewport ref={viewport}>
           <MessageScrollerContent className="chat-message-list">
             {hasMore && (
               <MessageScrollerItem messageId="older">
@@ -109,7 +120,13 @@ export function ChatTimeline({
                   new Date(previous.created_at).toDateString() !==
                     new Date(m.created_at).toDateString();
               return (
-                <MessageScrollerItem key={m.id} messageId={m.id}>
+                <MessageScrollerItem
+                  key={m.id}
+                  messageId={m.id}
+                  className={
+                    m.id === focusMessage ? "message-highlight" : undefined
+                  }
+                >
                   {divider && (
                     <Marker variant="separator" className="date-marker">
                       <MarkerContent>
@@ -139,10 +156,43 @@ export function ChatTimeline({
             })}
           </MessageScrollerContent>
         </MessageScrollerViewport>
-        <MessageScrollerButton />
+        <MessageReadTracker
+          viewport={viewport}
+          messages={messages}
+          onRead={onRead}
+        />
+        <MessageFocus
+          id={focusMessage}
+          present={messages.some((m) => m.id === focusMessage)}
+        />
+        {hasNewer && (
+          <Button
+            className="chat-latest-context"
+            variant="secondary"
+            size="sm"
+            onClick={onLatest}
+          >
+            Back to latest messages
+          </Button>
+        )}
+        {!hasNewer && <MessageScrollerButton />}
       </MessageScroller>
     </MessageScrollerProvider>
   );
+}
+function MessageFocus({
+  id,
+  present,
+}: {
+  id?: string | null;
+  present: boolean;
+}) {
+  const { scrollToMessage } = useMessageScroller();
+  useEffect(() => {
+    if (id && present)
+      scrollToMessage(id, { align: "center", behavior: "auto" });
+  }, [id, present, scrollToMessage]);
+  return null;
 }
 export function ChatRow({
   message: m,
@@ -292,19 +342,14 @@ export function ChatRow({
                       )}
                     </div>
                   )}
-                  {!hasParts &&
-                    m.activity.map((a) => (
-                      <AgentAction
-                        key={a.id}
-                        part={{
-                          type: "activity",
-                          id: a.id,
-                          title: a.title,
-                          detail: a.detail,
-                          status: a.status,
-                        }}
-                      />
-                    ))}
+                  {!hasParts && (
+                    <AgentActions
+                      parts={m.activity.map((a) => ({
+                        ...a,
+                        type: "activity" as const,
+                      }))}
+                    />
+                  )}
                   {active && (
                     <div className="chat-run-state">
                       <span>

@@ -119,3 +119,15 @@ Codex／Claude 进程；重复提交被拒绝，停止任务或任务超时后�
 部署者需要同步升级并重启 Server connector；服务器本地的 sandbox、permission 和
 approval 设置继续生效。更多交付目录、限制和协议说明见
 [connector 文档](../packages/connector/README.md#deliveries-and-interactive-tasks-05)。
+
+## Inbox 与操作详情
+
+侧栏 **Inbox** 汇总已加入频道、私聊、群聊及线程里的消息：
+
+- **Unread**：尚未阅读的消息，可逐条标为已读或将当前快照全部标为已读。
+- **Mentions**：所有提及自己的消息，保留已读记录并标注未读状态；此处的全部已读仅处理提及。
+- **Open conversation**：打开原线程并高亮对应消息；较早的回复加载附近上下文，可点击 **Back to latest messages** 返回最新回复。
+
+聊天消息在窗口处于前台、内容进入可见区域并短暂停留后才标记已读。打开 Notes、浏览 Inbox 预览或查看频道时未打开的线程，不会被顺带标为已读。同一成员的已读状态跨设备保存并实时同步；频道权限变化后，不再展示失去访问权限的消息。
+
+Agent 的连续工具步骤显示为 **N actions** 小按钮，与前后的 AI 回复保持顺序。点击后弹出 **Action details**，展开某一步可查看完整命令和输出；运行状态会继续更新。文件交付和需要回答的确认表单仍直接显示在对话中。

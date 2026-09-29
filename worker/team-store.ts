@@ -1,3 +1,4 @@
+import { unreadMessageSql } from "./read-query";
 import { proseOnly } from "../lib/mentions";
 import { env } from "cloudflare:workers";
 import type { Person, TeamMessage } from "../lib/chat";
@@ -37,7 +38,7 @@ export async function hydrate(
   if (!rows.length) return [];
   const ids = JSON.stringify(rows.map((r) => r.id)),
     placeholders = "SELECT value FROM json_each(?)";
-  const [people, reactions, replies, mentioned] = await Promise.all([
+  const [people, reactions, replies, mentioned, unread] = await Promise.all([
     env.DB.prepare(
       `SELECT ${personColumns} FROM people WHERE id IN (SELECT author_id FROM chat_messages WHERE id IN (${placeholders}))`,
     )
@@ -63,9 +64,15 @@ export async function hydrate(
     )
       .bind(ids)
       .all<Person & { message_id: string }>(),
+    env.DB.prepare(
+      `SELECT m.id FROM chat_messages m WHERE m.id IN (SELECT value FROM json_each(?2)) AND ${unreadMessageSql("?1")}`,
+    )
+      .bind(who.id, ids)
+      .all<{ id: string }>(),
   ]);
   return rows.map((r) => ({
     ...r,
+    unread: unread.results.some((m) => m.id === r.id),
     attachments: JSON.parse(r.attachments) as Attachment[],
     activity: JSON.parse(r.activity),
     parts: JSON.parse(r.parts || "[]"),

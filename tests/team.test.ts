@@ -532,3 +532,186 @@ describe("bots and connected agents", () => {
     await agent.cancel();
   });
 });
+
+describe("message reading and personal inbox", () => {
+  it("records individual reads without consuming other messages or thread replies", async () => {
+    const owner = await login(),
+      alice = await member(owner),
+      bob = await member(owner);
+    const id = await create(owner, {
+      private: true,
+      members: [alice.person.id, bob.person.id],
+    });
+    const root = await send(owner, id, `Hello <@${alice.person.id}>`);
+    const reply = await send(
+      owner,
+      id,
+      `Thread <@${alice.person.id}>`,
+      root.id,
+    );
+    const last = await send(owner, id, "Another update");
+    const feed = async (cookie: string, filter = "unread") =>
+      (await (
+        await request("/api/chat/inbox?filter=" + filter, cookie)
+      ).json()) as { messages: TeamMessage[]; through: number };
+    expect((await feed(alice.cookie)).messages.map((m) => m.id)).toEqual([
+      last.id,
+      reply.id,
+      root.id,
+    ]);
+    // Listing previews is not a read acknowledgement.
+    expect(
+      (await workspace(alice.cookie)).rooms.find((r) => r.id === id)?.unread,
+    ).toBe(3);
+    for (let i = 0; i < 2; i++)
+      expect(
+        (
+          await request("/api/chat/read", alice.cookie, "POST", {
+            messageIds: [last.id, last.id],
+          })
+        ).status,
+      ).toBe(200);
+    expect(
+      (await workspace(alice.cookie)).rooms.find((r) => r.id === id)?.unread,
+    ).toBe(2);
+    expect(
+      (await workspace(bob.cookie)).rooms.find((r) => r.id === id)?.unread,
+    ).toBe(3);
+    const snapshot = await feed(alice.cookie, "mentions");
+    const newest = await send(owner, id, `New <@${alice.person.id}>`);
+    expect(
+      (
+        await request("/api/chat/inbox/read", alice.cookie, "POST", {
+          filter: "mentions",
+          through: snapshot.through,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await feed(alice.cookie)).messages.map((m) => m.id)).toEqual([
+      newest.id,
+    ]);
+    const mentions = await feed(alice.cookie, "mentions");
+    expect(mentions.messages.map((m) => [m.id, m.unread])).toEqual([
+      [newest.id, true],
+      [reply.id, false],
+      [root.id, false],
+    ]);
+    expect((await messages(alice.cookie, id, root.id)).messages[0].unread).toBe(
+      false,
+    );
+  });
+  it("enforces joined membership and rejects mixed unauthorized read batches atomically", async () => {
+    const owner = await login(),
+      alice = await member(owner);
+    const privateId = await create(owner, { private: true });
+    const publicId = await create(owner);
+    const joinedId = await create(owner, {
+      private: true,
+      members: [alice.person.id],
+    });
+    const secret = await send(owner, privateId, "Private message"),
+      unjoined = await send(owner, publicId, "Unjoined message"),
+      visible = await send(owner, joinedId, "Visible message");
+    const feed = (await (
+      await request("/api/chat/inbox", alice.cookie)
+    ).json()) as { messages: TeamMessage[] };
+    expect(feed.messages.map((m) => m.id)).toEqual([visible.id]);
+    for (const hidden of [secret, unjoined])
+      expect(
+        (
+          await request("/api/chat/read", alice.cookie, "POST", {
+            messageIds: [visible.id, hidden.id],
+          })
+        ).status,
+      ).toBe(404);
+    expect(
+      (await workspace(alice.cookie)).rooms.find((r) => r.id === joinedId)
+        ?.unread,
+    ).toBe(1);
+    await request(
+      `/api/chat/rooms/${joinedId}/members/${alice.person.id}`,
+      owner,
+      "DELETE",
+    );
+    expect(
+      (
+        (await (await request("/api/chat/inbox", alice.cookie)).json()) as {
+          messages: TeamMessage[];
+        }
+      ).messages,
+    ).toEqual([]);
+  });
+  it("paginates the inbox and applies snapshot read-all without consuming new messages", async () => {
+    const owner = await login(),
+      alice = await member(owner);
+    const id = await create(owner, {
+      private: true,
+      members: [alice.person.id],
+    });
+    const first = await send(owner, id, "One"),
+      second = await send(owner, id, "Two"),
+      third = await send(owner, id, "Three");
+    const own = await send(alice.cookie, id, "My own message");
+    const deleted = await send(owner, id, "Deleted");
+    await request("/api/chat/messages/" + deleted.id, owner, "DELETE");
+    const feed = (await (
+      await request("/api/chat/inbox?limit=2", alice.cookie)
+    ).json()) as {
+      messages: TeamMessage[];
+      hasMore: boolean;
+      before: number;
+      through: number;
+    };
+    expect(feed.messages.map((m) => m.id)).toEqual([third.id, second.id]);
+    expect(feed.hasMore).toBe(true);
+    const next = (await (
+      await request("/api/chat/inbox?before=" + feed.before, alice.cookie)
+    ).json()) as { messages: TeamMessage[] };
+    expect(next.messages.map((m) => m.id)).toEqual([first.id]);
+    const latest = await send(owner, id, "Arrived after the snapshot");
+    await request("/api/chat/inbox/read", alice.cookie, "POST", {
+      filter: "unread",
+      through: feed.through,
+    });
+    const remaining = (await (
+      await request("/api/chat/inbox", alice.cookie)
+    ).json()) as { messages: TeamMessage[] };
+    expect(remaining.messages.map((m) => m.id)).toEqual([latest.id]);
+    expect(remaining.messages.some((m) => m.id === own.id)).toBe(false);
+  });
+  it("loads old replies around an inbox target while preserving thread and room boundaries", async () => {
+    const owner = await login(),
+      alice = await member(owner);
+    const id = await create(owner, {
+      private: true,
+      members: [alice.person.id],
+    });
+    const root = await send(owner, id, "Long thread"),
+      other = await send(owner, id, "Other thread");
+    const ids = Array.from({ length: 120 }, () => crypto.randomUUID());
+    await env.DB.batch(
+      ids.map((replyId, i) =>
+        env.DB.prepare(
+          "INSERT INTO chat_messages(id,room_id,parent_id,author_id,text,created_at) VALUES(?,?,?,?,?,?)",
+        ).bind(replyId, id, root.id, "owner", "Reply " + i, Date.now()),
+      ),
+    );
+    const response = await request(
+      `/api/chat/rooms/${id}/messages?parent=${root.id}&around=${ids[2]}`,
+      alice.cookie,
+    );
+    expect(response.status).toBe(200);
+    const page = (await response.json()) as MessagePage;
+    expect(page.messages.some((m) => m.id === ids[2])).toBe(true);
+    expect(page.hasNewer).toBe(true);
+    expect(page.messages.every((m) => m.parent_id === root.id)).toBe(true);
+    expect(
+      (
+        await request(
+          `/api/chat/rooms/${id}/messages?parent=${other.id}&around=${ids[2]}`,
+          alice.cookie,
+        )
+      ).status,
+    ).toBe(404);
+  });
+});

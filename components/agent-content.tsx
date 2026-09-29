@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { FileText, Download, ChevronRight } from "lucide-react";
+import { FileText, Download, ChevronRight, ListChecks } from "lucide-react";
+import { Button } from "./ui/button";
 import { MessageMarkdown } from "./message-markdown";
 import { FieldSet } from "./ui/field";
 import { Marker, MarkerContent } from "./ui/marker";
@@ -17,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogTrigger,
 } from "./ui/dialog";
 import {
   Questionnaire,
@@ -50,14 +52,56 @@ export function AgentAction({
   part: Extract<AgentPart, { type: "activity" }>;
 }) {
   return (
-    <details className="agent-action" data-agent-part="activity">
+    <details className="agent-action">
       <summary>
         <ChevronRight aria-hidden="true" />
         <span>{part.title}</span>
         <span className="agent-action-status">{part.status}</span>
       </summary>
-      {part.detail && <pre>{part.detail}</pre>}
+      <pre>
+        {part.title}
+        {part.detail ? "\n\n" + part.detail : ""}
+      </pre>
     </details>
+  );
+}
+export function AgentActions({
+  parts,
+}: {
+  parts: Extract<AgentPart, { type: "activity" }>[];
+}) {
+  if (!parts.length) return null;
+  const running = parts.some((p) =>
+    ["running", "pending", "queued"].includes(p.status),
+  );
+  const failed = parts.some((p) => ["failed", "error"].includes(p.status));
+  return (
+    <div className="agent-actions" data-agent-part="activity">
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="xs">
+            <ListChecks />
+            {parts.length} {parts.length === 1 ? "action" : "actions"}
+            {running ? " · Running" : failed ? " · Failed" : ""}
+            <ChevronRight />
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="agent-actions-dialog">
+          <DialogHeader>
+            <DialogTitle>Action details</DialogTitle>
+            <DialogDescription>
+              {parts.length} {parts.length === 1 ? "step" : "steps"} in
+              execution order. Expand a step to see its command and output.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="agent-actions-list">
+            {parts.map((p) => (
+              <AgentAction key={p.id} part={p} />
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 export function DeliveredArtifact({
@@ -336,9 +380,24 @@ export function AgentContent({
   me: Person;
   onChange: () => Promise<void>;
 }) {
+  const groups: (
+    | Exclude<AgentPart, { type: "activity" }>
+    | {
+        type: "actions";
+        id: string;
+        parts: Extract<AgentPart, { type: "activity" }>[];
+      }
+  )[] = [];
+  for (const part of message.parts || []) {
+    if (part.type === "activity") {
+      const last = groups.at(-1);
+      if (last?.type === "actions") last.parts.push(part);
+      else groups.push({ type: "actions", id: part.id, parts: [part] });
+    } else groups.push(part);
+  }
   return (
     <div className="agent-content">
-      {message.parts?.map((p) =>
+      {groups.map((p) =>
         p.type === "text" ? (
           <div key={p.id} className="markdown" data-agent-part="text">
             <MessageMarkdown
@@ -347,8 +406,8 @@ export function AgentContent({
               refs={message.mention_refs}
             />
           </div>
-        ) : p.type === "activity" ? (
-          <AgentAction key={p.id} part={p} />
+        ) : p.type === "actions" ? (
+          <AgentActions key={p.id} parts={p.parts} />
         ) : p.type === "artifact" ? (
           <DeliveredArtifact
             key={p.id}

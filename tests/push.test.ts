@@ -234,7 +234,7 @@ it("rechecks membership, read state, deletion and session expiry before sending"
   const fetcher = vi
     .spyOn(globalThis, "fetch")
     .mockResolvedValue(new Response(null, { status: 201 }));
-  for (const mode of ["leave", "read", "deleted", "expired"]) {
+  for (const mode of ["leave", "read", "message-read", "deleted", "expired"]) {
     await env.DB.prepare("DELETE FROM push_subscriptions").run();
     const f = await fixture("dm"),
       id = await message(f);
@@ -249,6 +249,12 @@ it("rechecks membership, read state, deletion and session expiry before sending"
         "INSERT INTO room_reads SELECT room_id,?,seq FROM chat_messages WHERE id=?",
       )
         .bind("owner", id)
+        .run();
+    if (mode === "message-read")
+      await env.DB.prepare(
+        "INSERT INTO message_reads(person_id,message_id,read_at) VALUES(?,?,?)",
+      )
+        .bind("owner", id, Date.now())
         .run();
     if (mode === "deleted")
       await env.DB.prepare("UPDATE chat_messages SET deleted_at=? WHERE id=?")

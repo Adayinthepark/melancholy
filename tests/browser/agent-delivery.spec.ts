@@ -97,6 +97,13 @@ test("real connector transport interleaves actions, persists deliveries and roun
       status: "completed",
     });
     await emit({
+      type: "activity",
+      id: "check",
+      title: "Run checks " + "with a long command argument ".repeat(8),
+      detail: "Checking project structure",
+      status: "running",
+    });
+    await emit({
       type: "text",
       id: "plan",
       text: "Choose the report format before I continue.",
@@ -142,6 +149,49 @@ test("real connector transport interleaves actions, persists deliveries and roun
           nodes.map((n) => n.getAttribute("data-agent-part")),
         ),
     ).toEqual(["text", "activity", "text", "interaction"]);
+    await expect(
+      row.getByText("Read project files", { exact: true }),
+    ).toHaveCount(0);
+    await row
+      .getByRole("button", { name: "2 actions · Running", exact: true })
+      .click();
+    const actionDialog = page.getByRole("dialog", { name: "Action details" });
+    await expect(
+      actionDialog.getByText("Read project files", { exact: true }),
+    ).toBeVisible();
+    await actionDialog.locator("summary").first().click();
+    await expect(actionDialog.locator("pre").first()).toContainText(
+      "README.md",
+    );
+    await emit({
+      type: "activity",
+      id: "check",
+      title: "Run checks",
+      detail: "All checks passed",
+      status: "completed",
+    });
+    await expect(
+      actionDialog.getByText("Run checks", { exact: true }),
+    ).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.screenshot({
+      path: "/tmp/melancholy-action-details-phone.png",
+      animations: "disabled",
+    });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.screenshot({
+      path: "/tmp/melancholy-action-details.png",
+      animations: "disabled",
+    });
+    await page.keyboard.press("Escape");
+    await expect(
+      row.getByRole("button", { name: "2 actions", exact: true }),
+    ).toBeFocused();
     await row.getByRole("radio", { name: /Markdown/ }).check();
     await row.getByRole("button", { name: "Next", exact: true }).click();
     await row

@@ -13,11 +13,11 @@ server; cloud agent sessions and workspace data stay in your Cloudflare account.
 - Invite-only member accounts, editable usernames and profile images.
 - Public/private channels, one-to-one messages, group messages and thread replies.
 - Markdown, member mentions, emoji reactions, editing and deletion.
-- Unread and mention counts, synchronized read positions and live updates.
+- Personal Inbox with Unread and Mentions, per-message reads, and live cross-device updates.
 - Private file uploads, image previews, paginated history and message search.
 - Bot identities, scoped API tokens, incoming webhooks and an event cursor API.
 - Codex and Claude Code connectors, explicit session resumption, execution logs
-  and task cancellation.
+  and task cancellation. Consecutive tool steps open in a compact details dialog.
 - Optional Cloudflare agents using Pi, persistent files and isolated JavaScript/
   lightweight shell tools; see [capabilities and limits](docs/cloud-agents.md).
 - GitHub, Cloudflare, LLM provider and custom credentials with per-channel grants.

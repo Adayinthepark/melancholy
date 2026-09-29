@@ -73,8 +73,15 @@ remain accessible. It is not a physical purge of model-provider or CLI history.
 
 Reactions are unique per message/person/emoji. Read cursors only move forward.
 Unread and mention counts exclude deleted messages and a person's own messages.
-Counts cover the entire conversation, including thread replies. Reading the
-active conversation marks it read. Optional Web Push notifies subscribed devices
+Counts cover the entire conversation, including thread replies. Legacy room cursors
+remain valid, while `message_reads` records individually viewed or acknowledged
+messages. The browser acknowledges messages after a short visible dwell in a
+focused window; hidden channels, project tabs and unopened threads remain unread.
+Inbox previews do not mark messages read. Inbox queries require current membership,
+exclude own/deleted messages and use sequence pagination. Mark-all inserts receipts
+only through the displayed snapshot, so later messages remain unread. Mentions
+also retains read mentions. Read changes invalidate only that member’s sockets.
+Older inbox targets load a bounded context window and can return to the latest replies. Optional Web Push notifies subscribed devices
 about DMs, mentions, participated threads and terminal agent results.
 
 Each member's Inbox Durable Object holds hibernating WebSockets. It sends only
@@ -263,6 +270,10 @@ their existing authorities. See [Channel databases](channel-databases.md) for AP
 authorization, limits, migration and backup implications.
 
 ### Ordered agent output, deliveries and input requests
+
+The UI groups consecutive activity parts into a small action button; its dialog
+shows full commands and outputs, with live statuses. Text, deliveries and input
+requests keep their positions between groups.
 
 Conversation keeps stable ordered parts alongside the compatibility `text` and
 `activity` fields. Connector `seq` remains the delivery deduplication cursor;

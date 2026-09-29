@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { transitionContent } from "@/lib/content-transition";
 import { AnimatedIcon } from "./animated-icon";
 import { ChannelSections } from "./channel-sections";
+import { InboxPanel } from "./inbox-panel";
 import { CasualSuggestions } from "./casual-chat";
 import { ResourceFields, applyResources } from "./channel-resources";
 import { emptyResources, type ChannelSuggestion } from "@/lib/projects";
@@ -30,6 +31,7 @@ import {
   ChevronDown,
   GitBranch,
   BarChart3,
+  Inbox,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Mark } from "@/components/brand";
@@ -111,6 +113,8 @@ export function TeamWorkspaceApp({
   focusedThread,
 }: { focusedThread?: string } = {}) {
   const [channelTab, setChannelTab] = useState("chat");
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [focusMessage, setFocusMessage] = useState<string | null>(null);
   const [resources, setResources] = useState(emptyResources),
     [createdRoom, setCreatedRoom] = useState(""),
     [createBrief, setCreateBrief] = useState(""),
@@ -157,10 +161,8 @@ export function TeamWorkspaceApp({
     channelSeq = useRef(0),
     threadSeq = useRef(0),
     latestRefresh = useRef<() => Promise<void>>(async () => {}),
-    readSeq = useRef<Record<string, number>>({}),
     [unreadAnchor, setUnreadAnchor] = useState(0),
-    anchorRoom = useRef(""),
-    [focusTick, setFocusTick] = useState(0);
+    anchorRoom = useRef("");
   active.current = { roomId, threadId };
   const refresh = useCallback(async () => {
     const sequence = ++refreshSeq.current;
@@ -185,6 +187,8 @@ export function TeamWorkspaceApp({
   }, []);
   useEffect(() => {
     const p = new URLSearchParams(location.search);
+    if (p.get("view") === "inbox") setInboxOpen(true);
+    if (p.get("message")) setFocusMessage(p.get("message"));
     if (p.get("room")) setRoomId(p.get("room")!);
     if (p.get("thread")) setThreadId(p.get("thread"));
     setDark(document.documentElement.classList.contains("dark"));
@@ -245,7 +249,13 @@ export function TeamWorkspaceApp({
         const [threadRoot, threadReplies] = await Promise.all([
           api<{ message: TeamMessage }>("/chat/messages/" + threadId),
           api<MessagePage>(
-            "/chat/rooms/" + roomId + "/messages?parent=" + threadId,
+            "/chat/rooms/" +
+              roomId +
+              "/messages?parent=" +
+              threadId +
+              (focusMessage && focusMessage !== threadId
+                ? "&around=" + encodeURIComponent(focusMessage)
+                : ""),
           ),
         ]);
         if (!isCurrent()) return;
@@ -261,7 +271,7 @@ export function TeamWorkspaceApp({
         }
       }
     },
-    [roomId, threadId, signedIn, refresh],
+    [roomId, threadId, signedIn, refresh, focusMessage],
   );
   latestRefresh.current = async () => {
     await Promise.all([refresh(), loadChannel(), loadThread()]);
@@ -329,7 +339,6 @@ export function TeamWorkspaceApp({
       if (document.visibilityState === "visible") invalidate();
     }, 15000);
     const focus = () => {
-      setFocusTick((v) => v + 1);
       invalidate();
     };
     window.addEventListener("focus", focus);
@@ -345,33 +354,23 @@ export function TeamWorkspaceApp({
       document.removeEventListener("visibilitychange", focus);
     };
   }, [signedIn]);
-  useEffect(() => {
-    if (
-      !signedIn ||
-      !current?.joined ||
-      !page.latest ||
-      loadedRoom !== roomId ||
-      document.visibilityState !== "visible" ||
-      (readSeq.current[roomId] || 0) >= page.latest
-    )
-      return;
-    const seq = page.latest;
-    void post("/chat/rooms/" + roomId + "/read", { seq })
-      .then(() => {
-        readSeq.current[roomId] = seq;
-        setWorkspace((w) =>
-          w
-            ? {
-                ...w,
-                rooms: w.rooms.map((r) =>
-                  r.id === roomId ? { ...r, unread: 0, mentions: 0 } : r,
-                ),
-              }
-            : w,
-        );
-      })
-      .catch(() => {});
-  }, [page.latest, roomId, loadedRoom, signedIn, current?.joined, focusTick]);
+  const markVisible = useCallback(
+    async (messageIds: string[]) => {
+      await post("/chat/read", { messageIds });
+      const seen = new Set(messageIds);
+      const update = (p: MessagePage) => ({
+        ...p,
+        messages: p.messages.map((m) =>
+          seen.has(m.id) ? { ...m, unread: false } : m,
+        ),
+      });
+      setPage(update);
+      setReplies(update);
+      setRoot((r) => (r && seen.has(r.id) ? { ...r, unread: false } : r));
+      await refresh();
+    },
+    [refresh],
+  );
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -405,8 +404,14 @@ export function TeamWorkspaceApp({
       clearTimeout(timer);
     };
   }, [query, searchOpen]);
-  function choose(id: string, thread: string | null = null) {
+  function choose(
+    id: string,
+    thread: string | null = null,
+    message: string | null = null,
+  ) {
     const update = () => {
+      setInboxOpen(false);
+      setFocusMessage(message);
       setChannelTab("chat");
       setRoomId(id);
       setThreadId(thread);
@@ -416,7 +421,8 @@ export function TeamWorkspaceApp({
         "",
         "/?room=" +
           encodeURIComponent(id) +
-          (thread ? "&thread=" + thread : ""),
+          (thread ? "&thread=" + thread : "") +
+          (message ? "&message=" + message : ""),
       );
     };
     if (id !== roomId) transitionContent(update);
@@ -647,9 +653,30 @@ export function TeamWorkspaceApp({
         New message
       </Button>
       <nav className="team-nav" aria-label="Conversations">
+        <button
+          className={"team-room-link" + (inboxOpen ? " selected" : "")}
+          aria-current={inboxOpen ? "page" : undefined}
+          onClick={() => {
+            setInboxOpen(true);
+            setThreadId(null);
+            setMobile(false);
+            history.replaceState(null, "", "/?view=inbox");
+          }}
+        >
+          <Inbox />
+          <span>Inbox</span>
+          {workspace.rooms.some((r) => r.unread) && (
+            <Badge variant="secondary">
+              {workspace.rooms.reduce((total, r) => total + r.unread, 0)}
+            </Badge>
+          )}
+        </button>
         {!!workspace.casual?.enabled && (
           <button
-            className={"team-room-link" + (current?.casual ? " selected" : "")}
+            className={
+              "team-room-link" +
+              (!inboxOpen && current?.casual ? " selected" : "")
+            }
             disabled={busy}
             onClick={() =>
               void act(async () => {
@@ -700,11 +727,11 @@ export function TeamWorkspaceApp({
             <button
               className={
                 "team-room-link" +
-                (r.id === roomId ? " selected" : "") +
+                (!inboxOpen && r.id === roomId ? " selected" : "") +
                 (r.unread ? " unread" : "")
               }
               key={r.id}
-              aria-current={r.id === roomId ? "page" : undefined}
+              aria-current={!inboxOpen && r.id === roomId ? "page" : undefined}
               onClick={() => choose(r.id)}
             >
               {r.private ? <Lock /> : <Hash />}
@@ -741,10 +768,10 @@ export function TeamWorkspaceApp({
           .map((r) => (
             <button
               key={r.id}
-              aria-current={r.id === roomId ? "page" : undefined}
+              aria-current={!inboxOpen && r.id === roomId ? "page" : undefined}
               className={
                 "team-room-link" +
-                (r.id === roomId ? " selected" : "") +
+                (!inboxOpen && r.id === roomId ? " selected" : "") +
                 (r.unread ? " unread" : "")
               }
               onClick={() => choose(r.id)}
@@ -834,8 +861,13 @@ export function TeamWorkspaceApp({
           >
             <PanelLeft />
           </Button>
-          <div className="team-heading" title={current?.topic}>
-            {current &&
+          <div
+            className="team-heading"
+            title={inboxOpen ? undefined : current?.topic}
+          >
+            {inboxOpen && <Inbox />}
+            {!inboxOpen &&
+              current &&
               (current.kind === "channel" ? (
                 current.private ? (
                   <Lock />
@@ -847,7 +879,7 @@ export function TeamWorkspaceApp({
               ))}
             <button
               onClick={() => {
-                if (current && !current.casual) {
+                if (!inboxOpen && current && !current.casual) {
                   setName(current.name);
                   setTopic(current.topic);
                   setDetails(true);
@@ -855,11 +887,17 @@ export function TeamWorkspaceApp({
                 }
               }}
             >
-              {current ? roomName(current, me.id) : "Conversations"}
+              {inboxOpen
+                ? "Inbox"
+                : current
+                  ? roomName(current, me.id)
+                  : "Conversations"}
             </button>
-            {current?.kind !== "channel" && <span>{current?.topic}</span>}
+            {!inboxOpen && current?.kind !== "channel" && (
+              <span>{current?.topic}</span>
+            )}
           </div>
-          {current?.kind === "channel" && !focusedThread && (
+          {!inboxOpen && current?.kind === "channel" && !focusedThread && (
             <nav className="channel-tabs" aria-label="Channel sections">
               {["chat", "notes", "files", "issues", "timer", "data"].map(
                 (tab) => (
@@ -890,7 +928,7 @@ export function TeamWorkspaceApp({
             </nav>
           )}
           <div className="team-top-actions">
-            {current?.kind === "channel" && (
+            {!inboxOpen && current?.kind === "channel" && (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -904,6 +942,7 @@ export function TeamWorkspaceApp({
               variant="ghost"
               size="icon-sm"
               aria-label="Channel token usage"
+              hidden={inboxOpen}
               onClick={() => setUsage(true)}
             >
               <BarChart3 />
@@ -915,6 +954,7 @@ export function TeamWorkspaceApp({
               variant="ghost"
               size="icon-sm"
               aria-label="Conversation members"
+              hidden={inboxOpen}
               disabled={!current || !!current.casual}
               onClick={() => {
                 setName(current?.name || "");
@@ -943,7 +983,7 @@ export function TeamWorkspaceApp({
             </Button>
           </div>
         </header>
-        {!!current?.casual && (
+        {!inboxOpen && !!current?.casual && (
           <CasualSuggestions
             key={roomId}
             roomId={roomId}
@@ -951,177 +991,206 @@ export function TeamWorkspaceApp({
             onCreate={proposeChannel}
           />
         )}
-        <ConversationLayout
-          open={!!threadId}
-          focused={!!focusedThread}
-          thread={
-            <AnimatePresence initial={false} onExitComplete={afterThreadClose}>
-              {threadId && current && (
-                <ThreadPanel
-                  key="thread"
-                  focused={!!focusedThread}
-                  onClose={closeThread}
-                >
-                  <header>
-                    <strong>Thread</strong>
-                    <ThreadControls
-                      id={threadId}
+        {inboxOpen && (
+          <InboxPanel
+            workspace={workspace}
+            onChange={refresh}
+            onOpen={(m) => choose(m.room_id, m.parent_id || m.id, m.id)}
+          />
+        )}
+        <div className="workspace-conversation" hidden={inboxOpen}>
+          <ConversationLayout
+            open={!!threadId}
+            focused={!!focusedThread}
+            thread={
+              <AnimatePresence
+                initial={false}
+                onExitComplete={afterThreadClose}
+              >
+                {threadId && current && (
+                  <ThreadPanel
+                    key="thread"
+                    focused={!!focusedThread}
+                    onClose={closeThread}
+                  >
+                    <header>
+                      <strong>Thread</strong>
+                      <ThreadControls
+                        id={threadId}
+                        roomId={roomId}
+                        people={current.members}
+                        focused={!!focusedThread}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Close thread"
+                        onClick={closeThread}
+                      >
+                        <X />
+                      </Button>
+                    </header>
+                    <motion.div
+                      className="thread-panel-content"
+                      key={threadId}
+                      initial={{ opacity: reducedMotion ? 1 : 0.6 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: reducedMotion ? 0 : 0.14 }}
+                    >
+                      {root &&
+                      root.id === threadId &&
+                      root.room_id === roomId ? (
+                        <ChatTimeline
+                          messages={[root, ...visibleReplies]}
+                          onRetry={retryMessage}
+                          me={me}
+                          hasMore={replies.hasMore}
+                          onOlder={() => void older(true)}
+                          onThread={() => {}}
+                          onChange={() => latestRefresh.current()}
+                          onSaveNote={
+                            current.kind === "channel" && current.joined
+                              ? saveMessageNote
+                              : undefined
+                          }
+                          onRead={
+                            !inboxOpen && current.joined
+                              ? markVisible
+                              : undefined
+                          }
+                          focusMessage={focusMessage}
+                          hasNewer={replies.hasNewer}
+                          onLatest={() => choose(roomId, threadId)}
+                          thread
+                        />
+                      ) : (
+                        <MessagesSkeleton />
+                      )}
+                      {current.joined && (
+                        <ChatComposer
+                          key={roomId + threadId}
+                          roomId={roomId}
+                          parentId={threadId}
+                          people={current.members}
+                          label="Reply in thread"
+                          onSend={sendDraft}
+                        />
+                      )}
+                    </motion.div>
+                  </ThreadPanel>
+                )}
+              </AnimatePresence>
+            }
+          >
+            <section
+              className="team-channel"
+              style={
+                current?.kind === "channel" && channelTab !== "chat"
+                  ? { display: "none" }
+                  : undefined
+              }
+              aria-label="Channel messages"
+            >
+              {current ? (
+                <>
+                  {loading || loadedRoom !== roomId ? (
+                    <MessagesSkeleton />
+                  ) : visibleMessages.length ? (
+                    <ChatTimeline
+                      messages={visibleMessages}
+                      onRetry={retryMessage}
+                      me={me}
+                      hasMore={page.hasMore}
+                      onOlder={() => void older()}
+                      onThread={openThread}
+                      onChange={() => latestRefresh.current()}
+                      onSaveNote={
+                        current.kind === "channel" && current.joined
+                          ? saveMessageNote
+                          : undefined
+                      }
+                      onRead={
+                        !inboxOpen && channelTab === "chat" && current.joined
+                          ? markVisible
+                          : undefined
+                      }
+                      unreadAfter={unreadAnchor}
+                    />
+                  ) : (
+                    <Empty className="chat-empty">
+                      <EmptyHeader>
+                        <EmptyTitle>
+                          {current.kind === "channel"
+                            ? "# " + current.name
+                            : roomName(current, me.id)}
+                        </EmptyTitle>
+                        <EmptyDescription>
+                          {current.topic || "No messages yet."}
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  )}
+                  {current.casual &&
+                  (!workspace.casual?.enabled ||
+                    !current.members.some(
+                      (p) => p.id === workspace.casual?.bot_id,
+                    )) ? (
+                    <p className="project-help p-4">
+                      This Casual chat is archived. Enable its assigned agent in
+                      workspace settings to continue.
+                    </p>
+                  ) : current.joined ? (
+                    <ChatComposer
+                      key={roomId}
                       roomId={roomId}
                       people={current.members}
-                      focused={!!focusedThread}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Close thread"
-                      onClick={closeThread}
-                    >
-                      <X />
-                    </Button>
-                  </header>
-                  <motion.div
-                    className="thread-panel-content"
-                    key={threadId}
-                    initial={{ opacity: reducedMotion ? 1 : 0.6 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: reducedMotion ? 0 : 0.14 }}
-                  >
-                    {root && root.id === threadId && root.room_id === roomId ? (
-                      <ChatTimeline
-                        messages={[root, ...visibleReplies]}
-                        onRetry={retryMessage}
-                        me={me}
-                        hasMore={replies.hasMore}
-                        onOlder={() => void older(true)}
-                        onThread={() => {}}
-                        onChange={() => latestRefresh.current()}
-                        onSaveNote={
-                          current.kind === "channel" && current.joined
-                            ? saveMessageNote
-                            : undefined
-                        }
-                        thread
-                      />
-                    ) : (
-                      <MessagesSkeleton />
-                    )}
-                    {current.joined && (
-                      <ChatComposer
-                        key={roomId + threadId}
-                        roomId={roomId}
-                        parentId={threadId}
-                        people={current.members}
-                        label="Reply in thread"
-                        onSend={sendDraft}
-                      />
-                    )}
-                  </motion.div>
-                </ThreadPanel>
-              )}
-            </AnimatePresence>
-          }
-        >
-          <section
-            className="team-channel"
-            style={
-              current?.kind === "channel" && channelTab !== "chat"
-                ? { display: "none" }
-                : undefined
-            }
-            aria-label="Channel messages"
-          >
-            {current ? (
-              <>
-                {loading || loadedRoom !== roomId ? (
-                  <MessagesSkeleton />
-                ) : visibleMessages.length ? (
-                  <ChatTimeline
-                    messages={visibleMessages}
-                    onRetry={retryMessage}
-                    me={me}
-                    hasMore={page.hasMore}
-                    onOlder={() => void older()}
-                    onThread={openThread}
-                    onChange={() => latestRefresh.current()}
-                    onSaveNote={
-                      current.kind === "channel" && current.joined
-                        ? saveMessageNote
-                        : undefined
-                    }
-                    unreadAfter={unreadAnchor}
-                  />
-                ) : (
-                  <Empty className="chat-empty">
-                    <EmptyHeader>
-                      <EmptyTitle>
-                        {current.kind === "channel"
-                          ? "# " + current.name
-                          : roomName(current, me.id)}
-                      </EmptyTitle>
-                      <EmptyDescription>
-                        {current.topic || "No messages yet."}
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                )}
-                {current.casual &&
-                (!workspace.casual?.enabled ||
-                  !current.members.some(
-                    (p) => p.id === workspace.casual?.bot_id,
-                  )) ? (
-                  <p className="project-help p-4">
-                    This Casual chat is archived. Enable its assigned agent in
-                    workspace settings to continue.
-                  </p>
-                ) : current.joined ? (
-                  <ChatComposer
-                    key={roomId}
-                    roomId={roomId}
-                    people={current.members}
-                    label={
-                      "Message " +
-                      (current.kind === "channel" ? "#" : "") +
-                      roomName(current, me.id)
-                    }
-                    onSend={sendDraft}
-                  />
-                ) : (
-                  <div className="join-channel">
-                    <Button
-                      disabled={busy}
-                      onClick={() =>
-                        void act(() => post("/chat/rooms/" + roomId + "/join"))
+                      label={
+                        "Message " +
+                        (current.kind === "channel" ? "#" : "") +
+                        roomName(current, me.id)
                       }
-                    >
-                      Join channel
-                    </Button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <Empty>
-                <EmptyHeader>
-                  <EmptyTitle>No conversations</EmptyTitle>
-                </EmptyHeader>
-                <Button
-                  variant="outline"
-                  onClick={() => startCreate("channel")}
-                >
-                  Create channel
-                </Button>
-              </Empty>
+                      onSend={sendDraft}
+                    />
+                  ) : (
+                    <div className="join-channel">
+                      <Button
+                        disabled={busy}
+                        onClick={() =>
+                          void act(() =>
+                            post("/chat/rooms/" + roomId + "/join"),
+                          )
+                        }
+                      >
+                        Join channel
+                      </Button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyTitle>No conversations</EmptyTitle>
+                  </EmptyHeader>
+                  <Button
+                    variant="outline"
+                    onClick={() => startCreate("channel")}
+                  >
+                    Create channel
+                  </Button>
+                </Empty>
+              )}
+            </section>
+            {current?.kind === "channel" && (
+              <ChannelSections
+                key={roomId}
+                tab={channelTab}
+                room={current}
+                workspace={workspace}
+                onThread={(id) => choose(roomId, id)}
+              />
             )}
-          </section>
-          {current?.kind === "channel" && (
-            <ChannelSections
-              key={roomId}
-              tab={channelTab}
-              room={current}
-              workspace={workspace}
-              onThread={(id) => choose(roomId, id)}
-            />
-          )}
-        </ConversationLayout>
+          </ConversationLayout>
+        </div>
       </main>
       {current && (
         <>
@@ -1575,7 +1644,7 @@ export function TeamWorkspaceApp({
                     className="chat-search-result"
                     onSelect={() => {
                       setSearchOpen(false);
-                      choose(m.room_id, m.parent_id || m.id);
+                      choose(m.room_id, m.parent_id || m.id, m.id);
                     }}
                   >
                     <div>

@@ -1,3 +1,5 @@
+import { inboxApi } from "./read-state";
+import { unreadMessageSql } from "./read-query";
 import { interactionResponseSchema } from "../lib/interaction-schema";
 import { projectApi } from "./project-api";
 import { casualSettings, isCasual, assertCasualActive } from "./casual";
@@ -127,24 +129,14 @@ function event(roomId: string, id: string, type: string) {
 }
 async function listRooms(who: Identity) {
   const list = await env.DB.prepare(
-    `SELECT r.*,EXISTS(SELECT 1 FROM casual_rooms cr WHERE cr.room_id=r.id) AS casual,EXISTS(SELECT 1 FROM room_members rm WHERE rm.room_id=r.id AND rm.person_id=?) AS joined,
+    `SELECT r.*,EXISTS(SELECT 1 FROM casual_rooms cr WHERE cr.room_id=r.id) AS casual,EXISTS(SELECT 1 FROM room_members rm WHERE rm.room_id=r.id AND rm.person_id=?1) AS joined,
     COALESCE((SELECT MAX(seq) FROM chat_messages m WHERE m.room_id=r.id),0) AS last_seq,
-    COALESCE((SELECT last_seq FROM room_reads rr WHERE rr.room_id=r.id AND rr.person_id=?),0) AS last_read,
-    (SELECT COUNT(*) FROM chat_messages m WHERE m.room_id=r.id AND m.author_id<>? AND m.deleted_at IS NULL AND m.seq>COALESCE((SELECT last_seq FROM room_reads rr WHERE rr.room_id=r.id AND rr.person_id=?),0)) AS unread,
-    (SELECT COUNT(*) FROM chat_messages m JOIN message_mentions mm ON mm.message_id=m.id WHERE m.room_id=r.id AND mm.person_id=? AND m.author_id<>? AND m.deleted_at IS NULL AND m.seq>COALESCE((SELECT last_seq FROM room_reads rr WHERE rr.room_id=r.id AND rr.person_id=?),0)) AS mentions
-    FROM rooms r WHERE EXISTS(SELECT 1 FROM room_members rm WHERE rm.room_id=r.id AND rm.person_id=?) OR (?='human' AND r.kind='channel' AND r.private=0) ORDER BY r.kind,r.name LIMIT 500`,
+    COALESCE((SELECT last_seq FROM room_reads rr WHERE rr.room_id=r.id AND rr.person_id=?1),0) AS last_read,
+    (SELECT COUNT(*) FROM chat_messages m WHERE m.room_id=r.id AND ${unreadMessageSql("?1")}) AS unread,
+    (SELECT COUNT(*) FROM chat_messages m JOIN message_mentions mm ON mm.message_id=m.id AND mm.person_id=?1 WHERE m.room_id=r.id AND ${unreadMessageSql("?1")}) AS mentions
+    FROM rooms r WHERE EXISTS(SELECT 1 FROM room_members rm WHERE rm.room_id=r.id AND rm.person_id=?1) OR (?2='human' AND r.kind='channel' AND r.private=0) ORDER BY r.kind,r.name LIMIT 500`,
   )
-    .bind(
-      who.id,
-      who.id,
-      who.id,
-      who.id,
-      who.id,
-      who.id,
-      who.id,
-      who.id,
-      who.kind,
-    )
+    .bind(who.id, who.kind)
     .all<Room>();
   const rooms = list.results.filter(
     (r) => !who.roomScope || r.id === who.roomScope,
@@ -479,6 +471,8 @@ async function route(request: Request): Promise<Response> {
     );
   if (who.taskRunId && who.roomScope)
     await assertCasualActive(who.roomScope, who.id);
+  const inbox = await inboxApi(request, who, path, () => body(request));
+  if (inbox) return inbox;
   const project = await projectApi(request, who, path);
   if (project) return project;
   const extra = await workbench(request, who, path);
@@ -760,6 +754,7 @@ async function route(request: Request): Promise<Response> {
       )
         .bind(id, who.id, Math.min(input.seq, latest!.seq))
         .run();
+      waitUntil(env.INBOXES.getByName(who.id).notify(id));
       return json({ ok: true });
     }
     if (action === "messages" && method === "POST")
@@ -776,6 +771,36 @@ async function route(request: Request): Promise<Response> {
         .int()
         .positive()
         .parse(url.searchParams.get("before") || Number.MAX_SAFE_INTEGER);
+      const around = url.searchParams.get("around");
+      if (around) {
+        const target = await message(around, who);
+        if (target.room_id !== id || target.parent_id !== parent)
+          throw new ChatError(404, "Message not found in this conversation.");
+        const [earlier, later] = await Promise.all([
+          env.DB.prepare(
+            "SELECT * FROM chat_messages WHERE room_id=?1 AND parent_id IS ?2 AND seq<=?3 ORDER BY seq DESC LIMIT 51",
+          )
+            .bind(id, parent, target.seq)
+            .all<StoredChat>(),
+          env.DB.prepare(
+            "SELECT * FROM chat_messages WHERE room_id=?1 AND parent_id IS ?2 AND seq>?3 ORDER BY seq ASC LIMIT 51",
+          )
+            .bind(id, parent, target.seq)
+            .all<StoredChat>(),
+        ]);
+        return json({
+          messages: await hydrate(
+            [
+              ...earlier.results.slice(0, 50).reverse(),
+              ...later.results.slice(0, 50),
+            ],
+            who,
+          ),
+          hasMore: earlier.results.length > 50,
+          hasNewer: later.results.length > 50,
+          latest: later.results.at(-1)?.seq || target.seq,
+        });
+      }
       const rows = await env.DB.prepare(
         `SELECT * FROM chat_messages WHERE room_id=? AND ${parent ? "parent_id=?" : "parent_id IS NULL"} AND seq<? ORDER BY seq DESC LIMIT 101`,
       )

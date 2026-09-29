@@ -71,6 +71,9 @@ test("sending, queued follow-ups, running and waiting remain visible and recover
     release();
     await expect(progress).toContainText(name);
     await expect(progress).toContainText("Waiting to start…");
+    await expect(page.locator(".team-channel .agent-progress-row")).toHaveCount(
+      1,
+    );
     ws = new WebSocket("ws://127.0.0.1:3017/api/connector", {
       headers: { Authorization: "Bearer " + server.token },
     });
@@ -95,6 +98,9 @@ test("sending, queued follow-ups, running and waiting remain visible and recover
     await expect.poll(() => jobs.length).toBe(1);
     await emit({ type: "started", sessionId: "progress-session" });
     await expect(progress).toContainText("Working…");
+    await expect(page.locator(".team-channel .agent-progress-row")).toHaveCount(
+      1,
+    );
     await emit({
       type: "text",
       text: "Investigating the requested work.\n\n".repeat(40),
@@ -117,7 +123,9 @@ test("sending, queued follow-ups, running and waiting remain visible and recover
     await page.reload();
     await expect(progress).toContainText("Queued…");
     await expect(progress).toContainText("Working…");
-    await expect(progress.locator(".agent-progress-row")).toHaveCount(2);
+    await expect(page.locator(".team-channel .agent-progress-row")).toHaveCount(
+      2,
+    );
     await page
       .locator(".team-channel [data-slot=message-scroller-viewport]")
       .evaluate((el) => (el.scrollTop = 0));
@@ -161,6 +169,9 @@ test("sending, queued follow-ups, running and waiting remain visible and recover
     });
     await expect(progress).toContainText("Waiting for input");
     await expect(progress).toContainText("Queued…");
+    await expect(page.locator(".team-channel .agent-progress-row")).toHaveCount(
+      2,
+    );
     await page.reload();
     await expect(progress).toContainText("Waiting for input");
     await emit({ type: "completed" });
@@ -170,7 +181,9 @@ test("sending, queued follow-ups, running and waiting remain visible and recover
     await expect.poll(() => jobs.length, { timeout: 15000 }).toBe(2);
     seq = 0;
     await emit({ type: "started", sessionId: "progress-session" });
-    await expect(progress.locator(".agent-progress-row")).toHaveCount(1);
+    await expect(page.locator(".team-channel .agent-progress-row")).toHaveCount(
+      1,
+    );
     await expect(progress).toContainText("Working…");
     await progress
       .getByRole("button", { name: `Stop ${name} task`, exact: true })

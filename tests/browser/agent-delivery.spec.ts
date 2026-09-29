@@ -464,9 +464,7 @@ test("the connector process collects actual generated files before completing it
     await expect(
       page.getByRole("link", { name: /generated.csv/ }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Stop task" })).toHaveCount(
-      0,
-    );
+    await expect(page.locator(".agent-progress-row")).toHaveCount(0);
     const notes = await (
       await context.request.get(`/api/chat/rooms/${room.id}/notes`)
     ).json();

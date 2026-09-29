@@ -33,12 +33,10 @@ export function AgentStatus({
   request,
   roomId,
   onChange,
-  inline = false,
 }: {
   request: AgentRequest;
   roomId: string;
   onChange: () => Promise<void>;
-  inline?: boolean;
 }) {
   const [stopping, setStopping] = useState(false);
   const { status, bot_name, reply_id } = request;
@@ -92,7 +90,7 @@ export function AgentStatus({
           variant="ghost"
           size="xs"
           disabled={stopping}
-          aria-label={inline ? "Stop task" : `Stop ${bot_name} task`}
+          aria-label={`Stop ${bot_name} task`}
           onClick={() => void stop()}
         >
           <Square />

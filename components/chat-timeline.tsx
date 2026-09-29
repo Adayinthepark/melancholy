@@ -348,29 +348,14 @@ export function ChatRow({
                       }))}
                     />
                   )}
-                  {progress && isAgentActive(progress.status) && (
-                    <div className="chat-run-state">
-                      <AgentStatus
-                        request={progress}
-                        roomId={m.room_id}
-                        onChange={onChange}
-                        inline
-                      />
-                    </div>
-                  )}
                   {m.agent_requests
-                    ?.filter(
-                      (a) =>
-                        !a.reply_id &&
-                        (isAgentActive(a.status) || a.status === "failed"),
-                    )
+                    ?.filter((a) => !a.reply_id && a.status === "failed")
                     .map((request) => (
                       <div className="chat-run-state" key={request.bot_id}>
                         <AgentStatus
                           request={request}
                           roomId={m.room_id}
                           onChange={onChange}
-                          inline
                         />
                       </div>
                     ))}

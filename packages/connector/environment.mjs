@@ -59,7 +59,17 @@ export function redactor(environment) {
       return Object.fromEntries(
         Object.entries(value).map(([k, v]) => [
           k,
-          ["type", "status", "id", "sessionId", "runtime", "model"].includes(k)
+          [
+            "type",
+            "status",
+            "id",
+            "sessionId",
+            "runtime",
+            "model",
+            "kind",
+            "state",
+            "outcome",
+          ].includes(k)
             ? v
             : redact(v),
         ]),

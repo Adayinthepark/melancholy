@@ -1,3 +1,4 @@
+import { storeArtifact } from "./agent-artifacts";
 import { workspaceInfo } from "./workspace-settings";
 import { databaseApi } from "./database-api";
 import { env } from "cloudflare:workers";
@@ -128,8 +129,13 @@ async function route(request: Request): Promise<Response> {
   )
     return handleChat(request);
   if (path === "/api/health" && method === "GET")
-    return json({ ok: true, version: "0.3.0" });
+    return json({ ok: true, version: "0.5.0" });
 
+  if (path === "/api/connector/artifacts" && method === "POST") {
+    const identity = await connectorIdentity(request);
+    if (!identity) throw new HttpError(401, "Invalid connector token.");
+    return json(await storeArtifact(identity.id, request, limitedBody));
+  }
   if (path === "/api/connector/environment" && method === "POST") {
     const identity = await connectorIdentity(request);
     if (!identity) throw new HttpError(401, "Invalid connector token.");

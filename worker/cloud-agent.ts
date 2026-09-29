@@ -507,7 +507,8 @@ export class CloudAgent extends withWorkspace(CloudAgentBase, (self) =>
               );
           }
         }
-        if (event.type === "tool_execution_start")
+        if (event.type === "tool_execution_start") {
+          await this.emit(state, { type: "text", text: state.text });
           await this.emit(state, {
             type: "activity",
             id: event.toolCallId,
@@ -515,6 +516,7 @@ export class CloudAgent extends withWorkspace(CloudAgentBase, (self) =>
             detail: JSON.stringify(event.args).slice(0, 12000),
             status: "running",
           });
+        }
         if (event.type === "tool_execution_end")
           await this.emit(state, {
             type: "activity",

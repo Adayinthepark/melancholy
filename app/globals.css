@@ -2931,3 +2931,108 @@
     animation: none !important;
   }
 }
+
+.agent-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.agent-action {
+  margin-block: 5px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.agent-action > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+}
+.agent-action > summary > svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  transition: transform 150ms;
+}
+.agent-action[open] > summary > svg {
+  transform: rotate(90deg);
+}
+.agent-action > summary > span:first-of-type {
+  overflow-wrap: anywhere;
+}
+.agent-action-status {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.agent-action pre,
+.agent-request-detail {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.6;
+  margin-block: 8px;
+}
+.agent-questionnaire {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.agent-questionnaire [data-slot="questionnaire-title"] {
+  font-size: 14px;
+}
+.agent-questionnaire [data-slot="questionnaire-item"] {
+  gap: 10px;
+}
+.agent-questionnaire-result {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agent-delivery {
+  max-width: 460px;
+}
+.agent-document-button {
+  display: block;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.agent-document-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+.agent-delivery-image {
+  display: block;
+  max-height: 280px;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+.agent-document-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-width: 760px;
+}
+.agent-document-body {
+  max-height: 65dvh;
+  overflow: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-action > summary > svg {
+    transition: none;
+  }
+}

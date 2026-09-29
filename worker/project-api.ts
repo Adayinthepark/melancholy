@@ -11,7 +11,13 @@ import {
   readChannel,
   suggestChannel,
 } from "./casual";
-import { notes, saveNote, deleteNote, channelFiles } from "./channel-data";
+import {
+  notes,
+  getNote,
+  saveNote,
+  deleteNote,
+  channelFiles,
+} from "./channel-data";
 import {
   connection,
   github,
@@ -179,7 +185,10 @@ export async function projectApi(
     const [, roomId, kind, id] = data;
     await channel(roomId, who, method !== "GET");
     if (kind === "notes") {
-      if (method === "GET") return json({ notes: await notes(roomId) });
+      if (method === "GET")
+        return id
+          ? json(await getNote(roomId, id))
+          : json({ notes: await notes(roomId) });
       if ((method === "POST" && !id) || (method === "PUT" && id)) {
         const note = await saveNote(roomId, who.id, await body(request), id);
         waitUntil(publish(roomId));

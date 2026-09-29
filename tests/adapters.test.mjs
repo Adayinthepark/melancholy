@@ -235,3 +235,306 @@ test("short credential values do not alter event protocol fields", () => {
     text: "[redacted]",
   });
 });
+
+import {
+  InteractiveSession,
+  interactiveCommand,
+} from "../packages/connector/interactive.mjs";
+import {
+  outputDirectory,
+  collectArtifacts,
+} from "../packages/connector/artifacts.mjs";
+import { mkdtemp, writeFile, symlink, link, rm, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+function interactive(runtime, sessionId = null) {
+  const sent = [],
+    events = [];
+  let done = false;
+  const session = new InteractiveSession(runtime, {
+    sessionId,
+    cwd: "/project",
+    permission: "workspace-write",
+    prompt: "the task",
+    send: (v) => sent.push(v),
+    emit: (v) => events.push(v),
+    done: () => {
+      done = true;
+    },
+  });
+  return { session, sent, events, done: () => done };
+}
+test("interactive adapters preserve sandbox policy and explicit resume", () => {
+  assert.deepEqual(interactiveCommand("codex", "prior", "inherit").args, [
+    "app-server",
+  ]);
+  assert.ok(
+    interactiveCommand("codex", "prior", "read-only").args.includes(
+      'sandbox_mode="read-only"',
+    ),
+  );
+  const claude = interactiveCommand("claude", "prior", "workspace-write");
+  assert.ok(claude.args.includes("prior"));
+  assert.ok(claude.args.includes("stdio"));
+  assert.ok(claude.args.includes("acceptEdits"));
+  const { session, sent, events } = interactive("codex", "prior");
+  session.start();
+  session.accept({ id: "init", result: {} });
+  assert.equal(sent.at(-1).method, "thread/resume");
+  assert.equal(sent.at(-1).params.threadId, "prior");
+  session.accept({ id: "thread", result: { thread: { id: "prior" } } });
+  assert.equal(events[0].sessionId, "prior");
+  assert.equal(sent.at(-1).params.input[0].text, "the task");
+});
+test("Codex text, tools, approval and final response retain distinct IDs", () => {
+  const { session, sent, events, done } = interactive("codex", "thread");
+  session.accept({
+    method: "item/started",
+    params: {
+      threadId: "thread",
+      item: { id: "intro", type: "agentMessage", text: "Checking" },
+    },
+  });
+  session.accept({
+    method: "item/started",
+    params: {
+      threadId: "thread",
+      item: {
+        id: "tool",
+        type: "commandExecution",
+        command: "npm test",
+        status: "inProgress",
+      },
+    },
+  });
+  session.accept({
+    id: 42,
+    method: "item/commandExecution/requestApproval",
+    params: { threadId: "thread", itemId: "tool", command: "npm test" },
+  });
+  assert.equal(events.at(-1).interaction.state, "pending");
+  assert.equal(sent.length, 0);
+  session.respond("codex:42", { decision: "accept", command: "rm -rf /" });
+  assert.deepEqual(sent.at(-1), { id: 42, result: { decision: "accept" } });
+  session.respond("codex:42", { decision: "decline" });
+  assert.equal(sent.length, 1);
+  session.accept({
+    method: "item/completed",
+    params: {
+      item: {
+        id: "tool",
+        type: "commandExecution",
+        command: "npm test",
+        aggregatedOutput: "passed",
+        status: "completed",
+      },
+    },
+  });
+  session.accept({
+    method: "item/agentMessage/delta",
+    params: { itemId: "final", delta: "Done" },
+  });
+  session.accept({
+    method: "item/completed",
+    params: { item: { id: "final", type: "agentMessage", text: "Done." } },
+  });
+  assert.deepEqual(
+    events.filter((e) => e.type === "text").map((e) => [e.id, e.text]),
+    [
+      ["intro", "Checking"],
+      ["final", "Done"],
+      ["final", "Done."],
+    ],
+  );
+  session.accept({
+    method: "turn/completed",
+    params: { turn: { status: "completed" } },
+  });
+  assert.ok(done());
+});
+test("Codex questions return the native schema and reject foreign threads", () => {
+  const { session, sent, events } = interactive("codex", "thread");
+  const p = {
+    threadId: "thread",
+    questions: [
+      {
+        id: "choice",
+        question: "Which one?",
+        options: [{ label: "A", description: "First" }],
+        isOther: true,
+      },
+    ],
+  };
+  session.accept({ id: "q", method: "item/tool/requestUserInput", params: p });
+  assert.ok(events.at(-1).interaction.questions[0].freeform);
+  session.respond("codex:q", { answers: { choice: ["Custom answer"] } });
+  assert.deepEqual(sent.at(-1).result, {
+    answers: { choice: { answers: ["Custom answer"] } },
+  });
+  session.accept({
+    id: "foreign",
+    method: "item/commandExecution/requestApproval",
+    params: { threadId: "elsewhere" },
+  });
+  assert.ok(sent.at(-1).error);
+  session.accept({
+    id: "secret",
+    method: "item/tool/requestUserInput",
+    params: { ...p, questions: [{ ...p.questions[0], isSecret: true }] },
+  });
+  assert.ok(sent.at(-1).error);
+});
+test("Claude streaming blocks reconcile snapshots without replacing commentary", () => {
+  const { session, events } = interactive("claude");
+  session.accept({
+    type: "stream_event",
+    event: { type: "message_start", message: { id: "m1" } },
+  });
+  session.accept({
+    type: "stream_event",
+    event: {
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "text", text: "" },
+    },
+  });
+  session.accept({
+    type: "stream_event",
+    event: {
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "text_delta", text: "Checking." },
+    },
+  });
+  session.accept({
+    type: "assistant",
+    message: {
+      id: "m1",
+      content: [
+        { type: "text", text: "Checking." },
+        { type: "tool_use", id: "t1", name: "Read", input: { path: "README" } },
+      ],
+    },
+  });
+  session.accept({
+    type: "user",
+    message: {
+      content: [{ type: "tool_result", tool_use_id: "t1", content: "file" }],
+    },
+  });
+  session.accept({
+    type: "assistant",
+    message: { id: "m2", content: [{ type: "text", text: "Done." }] },
+  });
+  session.accept({ type: "result", result: "Done.", is_error: false });
+  assert.deepEqual([...session.texts.values()], ["Checking.", "Done."]);
+  assert.equal(
+    events.filter((e) => e.type === "activity").at(-1).title,
+    "Read",
+  );
+});
+test("Claude AskUserQuestion and tool decisions use real control responses", () => {
+  const { session, sent, events } = interactive("claude", "existing");
+  session.start();
+  session.accept({
+    type: "control_response",
+    response: { request_id: "melancholy-init", subtype: "success" },
+  });
+  assert.equal(sent.at(-1).session_id, "existing");
+  const questions = [
+    {
+      question: "Which colors?",
+      multiSelect: true,
+      options: [{ label: "A" }, { label: "B" }],
+    },
+  ];
+  session.accept({
+    type: "control_request",
+    request_id: "q",
+    request: {
+      subtype: "can_use_tool",
+      tool_name: "AskUserQuestion",
+      input: { questions },
+    },
+  });
+  assert.equal(events.at(-1).interaction.questions[0].multiple, true);
+  session.respond("claude:q", { answers: { q0: ["A", "B"] } });
+  assert.deepEqual(sent.at(-1).response.response, {
+    behavior: "allow",
+    updatedInput: { questions, answers: { "Which colors?": "A, B" } },
+  });
+  session.accept({
+    type: "control_request",
+    request_id: "t",
+    request: {
+      subtype: "can_use_tool",
+      tool_name: "Bash",
+      input: { command: "npm test" },
+    },
+  });
+  session.respond("claude:t", { decision: "decline" });
+  assert.equal(sent.at(-1).response.response.behavior, "deny");
+  session.accept({
+    type: "control_request",
+    request_id: "stale",
+    request: {
+      subtype: "can_use_tool",
+      tool_name: "Bash",
+      input: { command: "sleep 1" },
+    },
+  });
+  session.accept({ type: "control_cancel_request", request_id: "stale" });
+  const before = sent.length;
+  session.respond("claude:stale", { decision: "accept" });
+  assert.equal(sent.length, before);
+});
+test("delivery collection includes explicit files and refuses symlinks, hardlinks and oversized data", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "melancholy-delivery-"));
+  try {
+    const root = await outputDirectory(
+      cwd,
+      "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa",
+    );
+    await writeFile(join(cwd, "not-a-delivery.txt"), "private");
+    await writeFile(join(root, "report.md"), "# Report");
+    await writeFile(join(root, "draft.tmp"), "partial");
+    assert.deepEqual(
+      (await collectArtifacts(root)).map((f) => f.name),
+      ["report.md"],
+    );
+    await symlink(join(cwd, "not-a-delivery.txt"), join(root, "linked.txt"));
+    await assert.rejects(collectArtifacts(root), /Symbolic/);
+    await rm(join(root, "linked.txt"));
+    await link(join(cwd, "not-a-delivery.txt"), join(root, "linked.txt"));
+    await assert.rejects(collectArtifacts(root), /Linked/);
+    await rm(join(root, "linked.txt"));
+    await writeFile(
+      join(root, "large.bin"),
+      Buffer.alloc(10 * 1024 * 1024 + 1),
+    );
+    await assert.rejects(collectArtifacts(root), /10 MB/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("interaction protocol fields survive credential redaction", () => {
+  const redact = redactor({ CUSTOM_API_KEY: "a" });
+  const event = redact({
+    type: "interaction",
+    interaction: {
+      id: "q",
+      kind: "approval",
+      state: "pending",
+      title: "a secret",
+    },
+  });
+  assert.equal(event.interaction.kind, "approval");
+  assert.equal(event.interaction.state, "pending");
+  assert.equal(event.interaction.title, "[redacted] secret");
+  assert.equal(
+    redact({ type: "interaction_resolved", id: "q", outcome: "answered" })
+      .outcome,
+    "answered",
+  );
+});

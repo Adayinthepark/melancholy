@@ -1,3 +1,4 @@
+import type { AgentPart } from "./agent-parts";
 import type { Activity, Attachment } from "./protocol";
 export type Person = {
   id: string;
@@ -43,6 +44,7 @@ export type TeamMessage = {
   run_status: string | null;
   run_error: string | null;
   activity: Activity[];
+  parts?: AgentPart[];
   author: Person;
   mentioned_people?: Person[];
   mention_refs?: Record<string, string>;

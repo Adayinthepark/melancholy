@@ -128,7 +128,8 @@ from the CLI child's environment. Approved provider credentials are fetched for 
 into that CLI process. Inherited GitHub/Cloudflare credential variables are
 removed first. Other inherited environment variables and filesystem credentials remain the server operator's responsibility. `inherit`
 uses the operator's existing CLI policy; it never activates automatically after
-a sandbox failure. The web UI cannot approve interactive tool escalations.
+a sandbox failure. The web UI forwards native pending approvals and questions to the task author or
+a workspace owner. Responses do not change the configured CLI policy.
 
 `agent_threads` is the sole registry for connected agent sessions. The retired
 single-owner workspace, its HTTP/WebSocket endpoints, duplicate search index,
@@ -260,3 +261,29 @@ recheck the live D1 message and room ACL. Neither drafts nor deleted-file histor
 are exposed by database APIs. R2 remains the blob store; Issues and Timer retain
 their existing authorities. See [Channel databases](channel-databases.md) for API,
 authorization, limits, migration and backup implications.
+
+### Ordered agent output, deliveries and input requests
+
+Conversation keeps stable ordered parts alongside the compatibility `text` and
+`activity` fields. Connector `seq` remains the delivery deduplication cursor;
+a separate local projection revision also advances for web answers. D1's
+`event_seq` guards this projection revision, so answering a question cannot
+consume the next CLI event or let a stale projection overwrite it.
+
+Native interactive requests are recorded as pending parts. The response API
+checks human membership, task ownership/owner role, active run and answer
+schema. Conversation atomically records the first answer and retries delivery
+through Connector until an `interaction_resolved` event arrives. The local
+adapter deduplicates request IDs and distinguishes answered from expired
+requests. Approval responses are one-shot (or the requested Codex turn-scoped
+permissions); session grants and policy amendments are not exposed.
+
+`POST /api/connector/artifacts` accepts bounded file bytes from an authenticated
+Server for its active thread/run. It verifies bot membership and the existing
+reply, derives a deterministic delivery ID, writes Markdown through the managed
+Notes database or other bytes into R2, then records the result in
+`agent_artifacts`. File index triggers update the existing managed `files`
+collection. The connector emits the returned artifact reference in sequence;
+Conversation resolves the saved metadata instead of trusting supplied links.
+Deleting a reply clears parts and existing file authorization denies downloads.
+Notes remain independent documents with their provenance link.

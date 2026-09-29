@@ -9,11 +9,17 @@ export type StoredChat = Omit<
   TeamMessage,
   | "attachments"
   | "activity"
+  | "parts"
   | "author"
   | "reactions"
   | "reply_count"
   | "mention_refs"
-> & { attachments: string; activity: string; mention_refs: string };
+> & {
+  attachments: string;
+  activity: string;
+  parts?: string;
+  mention_refs: string;
+};
 export async function publish(roomId: string) {
   const members = await env.DB.prepare(
     "SELECT p.id FROM room_members m JOIN people p ON p.id=m.person_id WHERE m.room_id=? AND p.active=1 AND p.kind='human'",
@@ -62,6 +68,7 @@ export async function hydrate(
     ...r,
     attachments: JSON.parse(r.attachments) as Attachment[],
     activity: JSON.parse(r.activity),
+    parts: JSON.parse(r.parts || "[]"),
     mention_refs: JSON.parse(r.mention_refs || "{}"),
     mentioned_people: mentioned.results.filter((p) => p.message_id === r.id),
     author: people.results.find((p) => p.id === r.author_id)!,

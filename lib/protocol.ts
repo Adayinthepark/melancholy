@@ -1,3 +1,4 @@
+import type { AgentArtifact, AgentInteraction } from "./agent-parts";
 export type Runtime = "codex" | "claude" | "pi";
 export type RunStatus =
   "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -62,7 +63,14 @@ export type TokenUsage = {
 export type AgentEvent =
   | { type: "usage"; usage: TokenUsage }
   | { type: "started"; sessionId?: string }
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; id?: string }
+  | { type: "artifact"; artifact: AgentArtifact }
+  | { type: "interaction"; interaction: AgentInteraction }
+  | {
+      type: "interaction_resolved";
+      id: string;
+      outcome?: "answered" | "expired";
+    }
   | {
       type: "activity";
       id: string;

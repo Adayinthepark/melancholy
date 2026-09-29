@@ -54,6 +54,19 @@ export async function notes(roomId: string) {
   }
   return first.records.map((r) => flatNote(roomId, r));
 }
+export async function getNote(roomId: string, id: string) {
+  const db = await projectDatabase(roomId);
+  if (!db) throw new ChatError(404, "Channel not found.");
+  return flatNote(
+    roomId,
+    await databaseCall<DataRecord>(
+      db,
+      "get",
+      { collection: "notes", id },
+      "system",
+    ),
+  );
+}
 export async function saveNote(
   roomId: string,
   authorId: string,

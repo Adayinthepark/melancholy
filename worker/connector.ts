@@ -1,5 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
+import { interactionSchema } from "../lib/interaction-schema";
+import type { InteractionResponse } from "../lib/agent-parts";
 import type { AgentEvent, Job } from "../lib/protocol";
 
 const eventSchema = z.discriminatedUnion("type", [
@@ -18,7 +20,33 @@ const eventSchema = z.discriminatedUnion("type", [
     type: z.literal("started"),
     sessionId: z.string().max(200).optional(),
   }),
-  z.object({ type: z.literal("text"), text: z.string().max(500000) }),
+  z.object({
+    type: z.literal("text"),
+    text: z.string().max(500000),
+    id: z.string().max(200).optional(),
+  }),
+  z.object({ type: z.literal("interaction"), interaction: interactionSchema }),
+  z.object({
+    type: z.literal("interaction_resolved"),
+    id: z.string().min(1).max(200),
+    outcome: z.enum(["answered", "expired"]).optional(),
+  }),
+  z.object({
+    type: z.literal("artifact"),
+    artifact: z.object({
+      id: z.string().uuid(),
+      name: z.string().max(240),
+      noteId: z.string().uuid().optional(),
+      file: z
+        .object({
+          id: z.string().uuid(),
+          name: z.string().max(240),
+          size: z.number().int().nonnegative().max(10485760),
+          type: z.string().max(120),
+        })
+        .optional(),
+    }),
+  }),
   z.object({
     type: z.literal("activity"),
     id: z.string().max(200),
@@ -145,6 +173,20 @@ export class Connector extends DurableObject<Cloudflare.Env> {
       JSON.stringify(job),
     );
     this.send({ type: "cancel", jobId: id });
+  }
+  async respond(
+    jobId: string,
+    interactionId: string,
+    response: InteractionResponse,
+  ) {
+    if (this.revoked()) return;
+    const job = this.ctx.storage.sql
+      .exec<StoredJob>(
+        "SELECT * FROM jobs WHERE id=? AND status IN ('queued','running')",
+        jobId,
+      )
+      .toArray()[0];
+    if (job) this.send({ type: "respond", jobId, interactionId, response });
   }
   async revoke() {
     this.ctx.storage.sql.exec(

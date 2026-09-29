@@ -102,3 +102,20 @@ Notes 使用按需加载的 [CodeMirror 6](https://codemirror.net/docs/guide/) M
 管理员进入 **Workspace settings → Bots → Avatar**，可上传、预览、保存或移除头像，适用于 Server、Cloudflare 和 API Bot。支持 PNG、JPEG、WebP，最大 2 MB；未设置或加载失败时显示名称缩写。所有展示使用 shadcn Avatar。
 
 头像存于私有 R2，并经登录后的 API 读取。修改接口为 `POST /api/chat/bots/:id/avatar`（请求体为图片、Content-Type 为图片类型），移除使用 `DELETE`。只有工作区管理员可以修改活跃 Bot 的头像，普通成员和 Bot Token 无此权限。
+
+## Agent 交付与交互
+
+Server 任务现在会把交付目录里的 Markdown 存为频道 Notes，将图片、PDF、CSV 等
+文件存入私有 R2，并在聊天回复中展示文档／下载卡片。点击文档可以直接阅读，之后
+在 Notes 中编辑；Files 和 Data 共享文件索引。私聊没有频道 Notes，Markdown 以
+文件交付。此功能适用于升级 connector 后的新任务；不会扫描或补传历史服务器文件。
+
+Agent 的说明、工具动作和后续回复按照实际执行顺序混排；点击单个动作可以展开
+详情。运行中的原生确认和提问使用 Questionnaire，支持单选、多选及自由回答。
+只有本次任务的发起者或有频道权限的工作区管理员可以回答。提交会回到原来的
+Codex／Claude 进程；重复提交被拒绝，停止任务或任务超时后提问失效。刷新页面及
+网络重连会保留待回答状态；Server 进程重启仍将当前任务标记为中断。
+
+部署者需要同步升级并重启 Server connector；服务器本地的 sandbox、permission 和
+approval 设置继续生效。更多交付目录、限制和协议说明见
+[connector 文档](../packages/connector/README.md#deliveries-and-interactive-tasks-05)。

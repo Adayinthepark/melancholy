@@ -15,7 +15,13 @@ import { homedir, hostname } from "node:os";
 import { createInterface } from "node:readline";
 import { createHash } from "node:crypto";
 import WebSocket from "ws";
-import { commandFor, OutputParser } from "./adapters.mjs";
+import { commandFor } from "./adapters.mjs";
+import { InteractiveSession, interactiveCommand } from "./interactive.mjs";
+import {
+  outputDirectory,
+  collectArtifacts,
+  deliveryInstructions,
+} from "./artifacts.mjs";
 import { agentEnvironment, redactor } from "./environment.mjs";
 import { killTree } from "./process.mjs";
 
@@ -86,6 +92,7 @@ let ws = null,
   sending = null,
   reconnectTimer = null;
 const processes = new Map();
+const sessions = new Map();
 const waiting = [];
 let workerBusy = false;
 const ackWaiters = new Map();
@@ -166,7 +173,11 @@ async function run(job) {
     if (record.status === "cancelled") return;
     const files = await download(job);
     if (record.status === "cancelled" || stopping) return;
-    const { command, args } = commandFor(runtime, job.sessionId, permission);
+    const { command, args } = interactiveCommand(
+      runtime,
+      job.sessionId,
+      permission,
+    );
     // Connector credentials never enter the agent's environment.
     const environmentResponse = await fetch(
       new URL("/api/connector/environment", base),
@@ -186,7 +197,11 @@ async function run(job) {
       );
     const { environment } = await environmentResponse.json();
     if (record.status === "cancelled" || stopping) return;
-    const childEnv = agentEnvironment(process.env, environment);
+    const outputDir = await outputDirectory(cwd, job.id);
+    const childEnv = {
+      ...agentEnvironment(process.env, environment),
+      MELANCHOLY_OUTPUT_DIR: outputDir,
+    };
     redact = redactor(environment);
     const child = spawn(command, args, {
       cwd,
@@ -196,27 +211,48 @@ async function run(job) {
     });
     processes.set(job.id, child);
     let stderr = "",
-      latestText = null,
+      latestOutput = null,
       flushTimer = null;
     const flush = () => {
       if (flushTimer) clearTimeout(flushTimer);
       flushTimer = null;
-      if (latestText !== null) {
-        const text = latestText;
-        latestText = null;
-        void emit(job.id, { type: "text", text: text.slice(0, 500000) });
-      }
-    };
-    const parser = new OutputParser(runtime, (rawEvent) => {
-      const event = redact(rawEvent);
-      if (event.type === "text") {
-        latestText = event.text;
-        if (!flushTimer) flushTimer = setTimeout(flush, 250);
-      } else {
-        flush();
+      if (latestOutput !== null) {
+        const event = latestOutput;
+        latestOutput = null;
         void emit(job.id, event);
       }
+    };
+    const parser = new InteractiveSession(runtime, {
+      sessionId: job.sessionId,
+      cwd,
+      permission,
+      prompt:
+        job.prompt +
+        (files.length
+          ? `\n\nAttached files (local paths):\n${files.join("\n")}`
+          : "") +
+        deliveryInstructions(outputDir),
+      send: (data) => child.stdin.write(JSON.stringify(data) + "\n"),
+      done: () => {
+        child.stdin.end();
+      },
+      emit: (rawEvent) => {
+        const event = redact(rawEvent);
+        if (event.type === "text" || event.type === "activity") {
+          if (
+            latestOutput &&
+            (latestOutput.id !== event.id || latestOutput.type !== event.type)
+          )
+            flush();
+          latestOutput = event;
+          if (!flushTimer) flushTimer = setTimeout(flush, 250);
+        } else {
+          flush();
+          void emit(job.id, event);
+        }
+      },
     });
+    sessions.set(job.id, parser);
     const lines = createInterface({ input: child.stdout });
     lines.on("line", (line) => {
       try {
@@ -237,13 +273,8 @@ async function run(job) {
       child.once("error", reject);
       child.once("close", (code) => resolve(code));
     });
-    const prompt =
-      job.prompt +
-      (files.length
-        ? `\n\nAttached files (local paths):\n${files.join("\n")}`
-        : "");
     child.stdin.on("error", () => {});
-    child.stdin.end(prompt);
+    parser.start();
     let code;
     try {
       code = await result;
@@ -251,7 +282,66 @@ async function run(job) {
       clearTimeout(timer);
       flush();
       processes.delete(job.id);
+      sessions.delete(job.id);
       lines.close();
+    }
+    if (record.status !== "cancelled" && !timedOut) {
+      try {
+        for (const file of await collectArtifacts(outputDir)) {
+          if (record.status === "cancelled") break;
+          // Refuse exact task credentials rather than corrupting a binary delivery.
+          const readable = file.data.toString("utf8");
+          if (redact(readable) !== readable)
+            throw new Error(
+              "A delivery contains task credentials and was not uploaded.",
+            );
+          const endpoint = new URL("/api/connector/artifacts", base);
+          endpoint.search = new URLSearchParams({
+            threadId: job.threadId,
+            runId: job.id,
+            name: file.name,
+          }).toString();
+          let response;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              response = await fetch(endpoint, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/octet-stream",
+                },
+                body: file.data,
+                signal: AbortSignal.timeout(30000),
+              });
+              if (response.status < 500) break;
+            } catch (error) {
+              if (attempt === 2) throw error;
+            }
+          }
+          if (!response?.ok) {
+            const error = await response?.json().catch(() => null);
+            throw new Error(
+              error?.error ||
+                `Delivery upload failed (${response?.status || "network"}).`,
+            );
+          }
+          await emit(job.id, {
+            type: "artifact",
+            artifact: await response.json(),
+          });
+        }
+      } catch (error) {
+        parser.error ||=
+          "Files could not be delivered: " +
+          redact(String(error.message || error));
+        await emit(job.id, {
+          type: "activity",
+          id: "delivery-error",
+          title: "File delivery failed",
+          detail: parser.error,
+          status: "failed",
+        });
+      }
     }
     if (record.status === "cancelled")
       await emit(job.id, { type: "cancelled" });
@@ -261,12 +351,16 @@ async function run(job) {
         type: "failed",
         error: `Turn exceeded ${timeout} seconds.`,
       });
-    } else if (code !== 0 || parser.error) {
+    } else if (code !== 0 || parser.error || !parser.finished) {
       record.status = "failed";
       await emit(job.id, {
         type: "failed",
         error: redact(
-          parser.error || stderr || `${runtime} exited with code ${code}.`,
+          parser.error ||
+            stderr ||
+            (!parser.finished
+              ? "The CLI closed before completing the turn."
+              : `${runtime} exited with code ${code}.`),
         ).slice(-2000),
       });
     } else {
@@ -360,6 +454,11 @@ function connect() {
       }
       waiting.push(job);
       void schedule();
+    }
+    if (packet.type === "respond") {
+      sessions
+        .get(packet.jobId)
+        ?.respond(packet.interactionId, packet.response);
     }
     if (packet.type === "cancel") {
       const record = state.jobs[packet.jobId];

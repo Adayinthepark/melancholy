@@ -1,3 +1,4 @@
+import { interactionResponseSchema } from "../lib/interaction-schema";
 import { projectApi } from "./project-api";
 import { casualSettings, isCasual, assertCasualActive } from "./casual";
 import { cloudBotInput, modelCredential } from "./cloud-config";
@@ -898,7 +899,7 @@ async function route(request: Request): Promise<Response> {
       } else
         await env.DB.batch([
           env.DB.prepare(
-            "UPDATE chat_messages SET text='',attachments='[]',activity='[]',deleted_at=? WHERE id=?",
+            "UPDATE chat_messages SET text='',attachments='[]',activity='[]',parts='[]',deleted_at=? WHERE id=?",
           ).bind(Date.now(), id),
           env.DB.prepare(
             "DELETE FROM message_mentions WHERE message_id=?",
@@ -938,6 +939,32 @@ async function route(request: Request): Promise<Response> {
       await publish(m.room_id);
       return json({ ok: true });
     }
+  }
+  const interactionRoute = path.match(
+    /^\/api\/chat\/messages\/([^/]+)\/interactions\/([^/]+)$/,
+  );
+  if (interactionRoute && method === "POST") {
+    human(who);
+    const m = await message(interactionRoute[1], who, true);
+    if (!m.run_id || m.deleted_at)
+      throw new ChatError(409, "Task unavailable.");
+    const r = await room(m.room_id);
+    const mapping = await env.DB.prepare(
+      "SELECT thread_id FROM agent_threads WHERE room_id=? AND bot_id=? AND root_id=?",
+    )
+      .bind(m.room_id, m.author_id, r.kind === "dm" ? r.id : m.parent_id)
+      .first<{ thread_id: string }>();
+    if (!mapping) throw new ChatError(404, "Task not found.");
+    const response = interactionResponseSchema.parse(await body(request));
+    const result = await env.CONVERSATIONS.getByName(mapping.thread_id).answer(
+      m.run_id,
+      decodeURIComponent(interactionRoute[2]),
+      response,
+      who.id,
+      who.role === "owner",
+    );
+    if ("error" in result) throw new ChatError(result.status!, result.error!);
+    return json(result);
   }
   if (path === "/api/chat/files" && method === "POST") {
     const roomId = z.string().min(1).parse(url.searchParams.get("room"));

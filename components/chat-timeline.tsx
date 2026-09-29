@@ -1,4 +1,5 @@
 "use client";
+import { AgentContent, AgentAction } from "./agent-content";
 import { AnimatedIcon } from "./animated-icon";
 import { useState } from "react";
 import { MessageMarkdown } from "./message-markdown";
@@ -12,7 +13,6 @@ import {
   Link,
   FileText,
   Square,
-  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -167,6 +167,18 @@ export function ChatRow({
     [busy, setBusy] = useState(false),
     [reaction, setReaction] = useState(false),
     [customEmoji, setCustomEmoji] = useState("");
+  const hasParts = !!m.parts?.length;
+  const delivered = new Set(
+    m.parts?.flatMap((p) =>
+      p.type === "artifact" && p.artifact.file ? [p.artifact.file.id] : [],
+    ) || [],
+  );
+  const attachments = m.attachments.filter((f) => !delivered.has(f.id));
+  const waiting = m.parts?.some(
+    (p) =>
+      p.type === "interaction" &&
+      ["pending", "sending"].includes(p.interaction.state),
+  );
   const active = m.run_status === "queued" || m.run_status === "running";
   async function action(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -218,16 +230,20 @@ export function ChatRow({
                 <p className="text-muted-foreground italic">Message deleted</p>
               ) : (
                 <>
-                  <div className="markdown">
-                    <MessageMarkdown
-                      text={m.text}
-                      people={m.mentioned_people}
-                      refs={m.mention_refs}
-                    />
-                  </div>
-                  {!!m.attachments.length && (
+                  {hasParts ? (
+                    <AgentContent message={m} me={me} onChange={onChange} />
+                  ) : (
+                    <div className="markdown">
+                      <MessageMarkdown
+                        text={m.text}
+                        people={m.mentioned_people}
+                        refs={m.mention_refs}
+                      />
+                    </div>
+                  )}
+                  {!!attachments.length && (
                     <div className="chat-attachments">
-                      {m.attachments.map((file) =>
+                      {attachments.map((file) =>
                         [
                           "image/png",
                           "image/jpeg",
@@ -276,30 +292,27 @@ export function ChatRow({
                       )}
                     </div>
                   )}
-                  {!!m.activity.length && (
-                    <details className="chat-tool-log">
-                      <summary>
-                        <ChevronRight />
-                        {m.activity.length}{" "}
-                        {m.activity.length === 1 ? "step" : "steps"}
-                      </summary>
-                      {m.activity.map((a) => (
-                        <details key={a.id}>
-                          <summary>
-                            {a.title}
-                            <span>{a.status}</span>
-                          </summary>
-                          {a.detail && <pre>{a.detail}</pre>}
-                        </details>
-                      ))}
-                    </details>
-                  )}
+                  {!hasParts &&
+                    m.activity.map((a) => (
+                      <AgentAction
+                        key={a.id}
+                        part={{
+                          type: "activity",
+                          id: a.id,
+                          title: a.title,
+                          detail: a.detail,
+                          status: a.status,
+                        }}
+                      />
+                    ))}
                   {active && (
                     <div className="chat-run-state">
                       <span>
                         {m.run_status === "queued"
                           ? "Waiting for server"
-                          : "Working…"}
+                          : waiting
+                            ? "Waiting for input"
+                            : "Working…"}
                       </span>
                       <Button
                         variant="ghost"

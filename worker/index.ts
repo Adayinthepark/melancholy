@@ -1,3 +1,4 @@
+export { ChannelDatabase } from "./channel-database";
 import { runChannelTimers } from "./channel-timers";
 export { CloudAgent, WorkspaceServiceProxy } from "./cloud-agent";
 import handler from "vinext/server/fetch-handler";

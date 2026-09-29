@@ -76,3 +76,9 @@ Files 索引频道消息关联的 R2 附件，不扫描整个 bucket。草稿附
 ## 自部署升级
 
 备份 D1 后应用 `0010_channel_workspace.sql`，再部署新的 Worker。此迁移新增配置、Notes、Worker 关联、建议和 Timer 表，不删除原有会话或改变其 agent session ID。无需新建 R2 bucket 或增加 Cron Trigger；保留现有每分钟的 Cron 配置。
+
+## Channel Data
+
+频道现有 **Data** 标签。默认 Project 数据库的 notes 集合与 Notes 页面共享数据，
+files 集合维护已发布 R2 附件索引。也可创建多个独立数据库、定义 JSON 集合，
+并使用限权 API Token 接入外部系统。参见[频道数据库与完整 API](channel-databases.md)。

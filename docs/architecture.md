@@ -226,10 +226,10 @@ or grant a general bot token access to other rooms. Integration overview and
 health responses contain metadata only. Suggestions are proposals; channel
 creation and external resource changes stay in authenticated human actions.
 
-`channel_notes` stores versioned Markdown with author and update provenance.
+The Project database stores versioned Markdown with author and update provenance.
 `room_workers` links named Workers to existing integration IDs without granting
-credential use. Files are queried from posted, nondeleted `chat_files` records;
-R2 remains private. GitHub Issues continue to use the existing live API proxy.
+credential use. Files projects posted, nondeleted `chat_files` into the Project
+database; R2 remains private. GitHub Issues use the existing live API proxy.
 
 The minute Cron scans due `channel_timers`. A D1 batch gates each occurrence on
 its timer version, enabled flag, due time, membership and previous run completion.
@@ -240,3 +240,23 @@ next-at jumps forward. Pausing is for future scheduling; stopping a queued or
 running turn uses the existing conversation cancellation path. Soft deletion
 preserves occurrence provenance and chat history. See [project workspace](project-workspace.md)
 for setup, access boundaries, cadence semantics and supported actions.
+
+## Channel databases
+
+Each channel can own several databases. D1 `channel_databases` is the catalog,
+with channel membership and scoped, hashed, expiring integration tokens checked
+on every request. Each catalog ID resolves to one SQLite `ChannelDatabase` DO.
+JSON collections, validated records, schema versions, record history, changes
+and request deduplication live in that object. Record batches and multi-collection
+schema changes use synchronous SQLite transactions. No arbitrary SQL is exposed.
+
+A channel's managed Project database owns Notes. Legacy D1 Notes import once
+with stable IDs and provenance; all Notes writers now use DO records. The old
+table is a migration archive, not a live replica. Files is a managed collection
+projecting posted R2 attachment metadata. D1 triggers append publication and
+deletion events in the source transaction; the DO consumes them before reads,
+persisting its replay cursor atomically with records and changes. Downloads
+recheck the live D1 message and room ACL. Neither drafts nor deleted-file history
+are exposed by database APIs. R2 remains the blob store; Issues and Timer retain
+their existing authorities. See [Channel databases](channel-databases.md) for API,
+authorization, limits, migration and backup implications.

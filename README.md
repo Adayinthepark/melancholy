@@ -25,6 +25,7 @@ server; cloud agent sessions and workspace data stay in your Cloudflare account.
 - Optional private Casual chat with workspace-aware agent and channel suggestions.
 - Channel Chat, versioned Notes, R2 Files, live GitHub Issues and scheduled tasks.
 - Link or create GitHub repositories and associate Cloudflare Workers per channel.
+- Per-channel JSON databases on SQLite Durable Objects, scoped APIs and change cursors.
 - Multiple repositories per channel; GitHub Issues, comments and work threads.
 - Per-thread auto trigger, focused thread pages and reported token usage.
 - Optimistic sending with retry; shadcn/ui, Inter and light/dark themes.
@@ -50,7 +51,8 @@ PWA on iOS 16.4+ and supported desktop/Android browsers; see the [setup guide](d
 [Connections and Issues](docs/connections.md) ·
 [Connector setup](packages/connector/README.md) · [Contributing](CONTRIBUTING.md)
 
-[Casual chat and project channels (中文)](docs/project-workspace.md)
+[Casual chat and project channels (中文)](docs/project-workspace.md) ·
+[Channel databases and external API (中文)](docs/channel-databases.md)
 
 ## Local development
 

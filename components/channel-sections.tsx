@@ -12,6 +12,7 @@ import { Textarea } from "./ui/textarea";
 import { Field, FieldGroup, FieldLabel } from "./ui/field";
 import { Choice } from "./team-settings";
 import { MessageMarkdown } from "./message-markdown";
+import { ChannelDatabases } from "./channel-databases";
 import { ChannelWorkbench } from "./channel-workbench";
 export function ChannelSections({
   tab,
@@ -61,6 +62,15 @@ export function ChannelSections({
             room={room}
             workspace={workspace}
             onThread={onThread}
+          />
+        </div>
+      )}
+      {visited.includes("data") && (
+        <div hidden={tab !== "data"}>
+          <ChannelDatabases
+            room={room}
+            workspace={workspace}
+            active={tab === "data"}
           />
         </div>
       )}

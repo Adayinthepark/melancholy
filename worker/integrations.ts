@@ -1,3 +1,5 @@
+import { notes as channelNotes } from "./channel-data";
+import { databases } from "./database-store";
 import { scheduledMessageAllowed } from "./channel-timers";
 import { assertCasualActive } from "./casual";
 import { unseal } from "./credential-crypto";
@@ -192,13 +194,10 @@ export async function repositoryContext(roomId: string, rootId: string) {
   )
     .bind(rootId, roomId)
     .first<{ text: string }>();
-  const notes = (
-    await env.DB.prepare(
-      "SELECT id,title,version FROM channel_notes WHERE room_id=? ORDER BY updated_at DESC LIMIT 30",
-    )
-      .bind(roomId)
-      .all()
-  ).results;
+  const notes = (await channelNotes(roomId))
+    .slice(0, 30)
+    .map((n) => ({ id: n.id, title: n.title, version: n.version }));
+  const dbs = await databases(roomId);
   const workers = (
     await env.DB.prepare(
       "SELECT script_name,integration_id FROM room_workers WHERE room_id=?",
@@ -207,6 +206,9 @@ export async function repositoryContext(roomId: string, rootId: string) {
       .all()
   ).results;
   return (
+    "\nChannel databases: " +
+    JSON.stringify(dbs) +
+    "\nUse MELANCHOLY_API_TOKEN with /api/data/v1/databases/ID/schema to discover collections; GET /collections/NAME/records, POST /collections/NAME/query, and POST /batch for versioned record writes. Batch body: {requestId:UUID,operations:[{op: create|update|delete,collection,id,data,version}]}. Creates omit version, deletes omit data. Reuse requestId on retries. Files is a managed read-only index. Schema changes require a channel manager.\n" +
     "\nChannel Notes: " +
     JSON.stringify(notes) +
     "\nLinked Workers (association alone does not grant deployment credentials): " +

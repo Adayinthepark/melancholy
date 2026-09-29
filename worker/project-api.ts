@@ -11,7 +11,7 @@ import {
   readChannel,
   suggestChannel,
 } from "./casual";
-import { notes, saveNote, channelFiles } from "./channel-data";
+import { notes, saveNote, deleteNote, channelFiles } from "./channel-data";
 import {
   connection,
   github,
@@ -192,16 +192,7 @@ export async function projectApi(
           .int()
           .positive()
           .parse(url.searchParams.get("version"));
-        const result = await env.DB.prepare(
-          "DELETE FROM channel_notes WHERE room_id=? AND id=? AND version=?",
-        )
-          .bind(roomId, id, version)
-          .run();
-        if (!result.meta.changes)
-          throw new ChatError(
-            409,
-            "This note changed. Reload before deleting.",
-          );
+        await deleteNote(roomId, who.id, id, version);
         waitUntil(publish(roomId));
         return json({ ok: true });
       }

@@ -913,26 +913,30 @@ export function TeamWorkspaceApp({
         </header>
         {current?.kind === "channel" && !focusedThread && (
           <nav className="channel-tabs" aria-label="Channel sections">
-            {["chat", "notes", "files", "issues", "timer"].map((tab) => (
-              <button
-                key={tab}
-                aria-current={channelTab === tab ? "page" : undefined}
-                onClick={() => {
-                  setChannelTab(tab);
-                  setThreadId(null);
-                }}
-              >
-                {tab === "chat"
-                  ? "Chat"
-                  : tab === "notes"
-                    ? "Notes"
-                    : tab === "files"
-                      ? "Files"
-                      : tab === "issues"
-                        ? "Issues"
-                        : "Timer"}
-              </button>
-            ))}
+            {["chat", "notes", "files", "issues", "timer", "data"].map(
+              (tab) => (
+                <button
+                  key={tab}
+                  aria-current={channelTab === tab ? "page" : undefined}
+                  onClick={() => {
+                    setChannelTab(tab);
+                    setThreadId(null);
+                  }}
+                >
+                  {tab === "chat"
+                    ? "Chat"
+                    : tab === "notes"
+                      ? "Notes"
+                      : tab === "files"
+                        ? "Files"
+                        : tab === "issues"
+                          ? "Issues"
+                          : tab === "timer"
+                            ? "Timer"
+                            : "Data"}
+                </button>
+              ),
+            )}
           </nav>
         )}
         {!!current?.casual && (

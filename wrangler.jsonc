@@ -29,12 +29,14 @@
       { "name": "INBOXES", "class_name": "Inbox" },
       { "name": "CHAT_DISPATCHERS", "class_name": "ChatDispatcher" },
       { "name": "CLOUD_AGENTS", "class_name": "CloudAgent" },
+      { "name": "CHANNEL_DATABASES", "class_name": "ChannelDatabase" },
     ],
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["Conversation", "Connector"] },
     { "tag": "v2", "new_sqlite_classes": ["Inbox", "ChatDispatcher"] },
     { "tag": "v3", "new_sqlite_classes": ["CloudAgent"] },
+    { "tag": "v4", "new_sqlite_classes": ["ChannelDatabase"] },
   ],
   "assets": {
     "directory": "dist/client",

@@ -1,4 +1,5 @@
 import { workspaceInfo } from "./workspace-settings";
+import { databaseApi } from "./database-api";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 import { jobEnvironment } from "./integrations";
@@ -118,6 +119,7 @@ async function route(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
+  if (path.startsWith("/api/data/v1/")) return databaseApi(request);
   if (
     path.startsWith("/api/chat/") ||
     path.startsWith("/api/v1/") ||

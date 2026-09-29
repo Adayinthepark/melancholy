@@ -562,6 +562,59 @@ it("gives only the active Casual task the human read scope, and shares a stable 
       )
     ).status,
   ).toBe(201);
+  const dbResponse = await request(
+    "/data/v1/channels/" + accessible + "/databases",
+    "",
+    "GET",
+    undefined,
+    token,
+  );
+  expect(dbResponse.status).toBe(200);
+  const project = ((await dbResponse.json()) as { databases: { id: string }[] })
+    .databases[0].id;
+  expect(
+    (
+      await request(
+        "/data/v1/databases/" + project + "/collections/notes/query",
+        "",
+        "POST",
+        {},
+        token,
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request(
+        "/data/v1/channels/" + hidden + "/databases",
+        "",
+        "GET",
+        undefined,
+        token,
+      )
+    ).status,
+  ).toBe(404);
+  expect(
+    (
+      await request(
+        "/data/v1/databases/" + project + "/batch",
+        "",
+        "POST",
+        {
+          requestId: crypto.randomUUID(),
+          operations: [
+            {
+              op: "create",
+              collection: "notes",
+              id: crypto.randomUUID(),
+              data: { title: "Forbidden", content: "No" },
+            },
+          ],
+        },
+        token,
+      )
+    ).status,
+  ).toBe(404);
   const second = await request(
     "/chat/rooms/" + id + "/messages",
     b.cookie,
@@ -573,6 +626,17 @@ it("gives only the active Casual task the human read scope, and shares a stable 
   await configure(a.cookie, bot.id, false);
   expect(
     (await request("/v1/casual/context", "", "GET", undefined, token)).status,
+  ).toBe(403);
+  expect(
+    (
+      await request(
+        "/data/v1/databases/" + project + "/schema",
+        "",
+        "GET",
+        undefined,
+        token,
+      )
+    ).status,
   ).toBe(403);
   await agent.cancel();
 });
@@ -608,7 +672,13 @@ it("retries create operations with stable identifiers without duplicating projec
         )
       ).status,
     ).toBe(201);
-  expect(await dbCount("channel_notes", "room_id", roomId)).toBe(1);
+  expect(
+    (
+      (await (
+        await request("/chat/rooms/" + roomId + "/notes", a.cookie)
+      ).json()) as { notes: unknown[] }
+    ).notes,
+  ).toHaveLength(1);
   const timer = {
     id: crypto.randomUUID(),
     name: "Once",

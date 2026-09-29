@@ -1,3 +1,4 @@
+export { ChannelDatabase } from "../worker/channel-database";
 export { CloudAgent, WorkspaceServiceProxy } from "../worker/cloud-agent";
 import { handleApi } from "../worker/api";
 export { Conversation } from "../worker/conversation";

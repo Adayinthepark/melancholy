@@ -2597,3 +2597,160 @@
     flex-wrap: wrap;
   }
 }
+
+.database-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.database-list {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0 14px;
+}
+.database-list button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.database-list small,
+.database-layout small,
+.database-records small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.database-list button[aria-current],
+.database-layout nav button[aria-current] {
+  background: var(--accent);
+}
+.database-layout {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 14px;
+}
+.database-layout nav button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 9px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+.database-content {
+  min-width: 0;
+}
+.database-form {
+  display: grid;
+  gap: 12px;
+}
+.database-form label,
+.database-query label {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+.database-query {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+.database-query label {
+  flex: 1;
+  min-width: 0;
+}
+.database-code,
+.database-records pre,
+.database-history {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.database-records article {
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+}
+.database-records .project-toolbar {
+  margin-bottom: 4px;
+  gap: 8px;
+}
+.database-records code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.database-records pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 280px;
+  overflow: auto;
+  color: var(--muted-foreground);
+}
+.database-endpoint {
+  margin: 18px 0 6px;
+  overflow-wrap: anywhere;
+}
+.database-endpoint code {
+  font-size: 11px;
+}
+.database-dialog {
+  max-width: 680px;
+  max-height: 90dvh;
+  overflow: auto;
+}
+.database-history {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 60dvh;
+  overflow: auto;
+}
+.database-token {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--muted);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.database-token-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.database-token-list small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+@media (max-width: 650px) {
+  .database-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .database-layout nav {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+  }
+  .database-layout nav button {
+    width: auto;
+    gap: 10px;
+    white-space: nowrap;
+  }
+  .database-query {
+    flex-wrap: wrap;
+  }
+  .database-records .project-toolbar {
+    flex-wrap: wrap;
+  }
+}

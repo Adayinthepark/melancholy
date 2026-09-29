@@ -1,4 +1,7 @@
 import { integrationHealth } from "./integration-health";
+import { databases, databaseCall } from "./database-store";
+import { canReadRoom } from "./team-auth";
+import type { ChannelDatabase } from "../lib/channel-database";
 import {
   casualPrincipal,
   workspaceOverview,
@@ -56,6 +59,49 @@ export function cloudTools({
     return { name, label: name, description, parameters, execute } as AgentTool;
   }
   return [
+    tool(
+      "channel_database",
+      "Discover this channel's databases and JSON schemas, query/get records or atomically write a batch. action=list returns databases; collections returns schemas; query input={collection,query:{filters?,orderBy?,direction?,limit?,cursor?}}; get input={collection,id}; batch input={requestId,operations:[{op:create|update|delete,collection,id,data?,version?}]}. Reuse requestId on retries. Notes shares the Project database. Files is read-only. In Casual chat, provide channelId for read access only.",
+      Type.Object({
+        action: Type.Union([
+          Type.Literal("list"),
+          Type.Literal("collections"),
+          Type.Literal("query"),
+          Type.Literal("get"),
+          Type.Literal("batch"),
+          Type.Literal("changes"),
+        ]),
+        databaseId: Type.Optional(Type.String()),
+        channelId: Type.Optional(Type.String()),
+        input: Type.Optional(Type.Unknown()),
+      }),
+      async (_id, args) => {
+        const roomId = config.casual ? args.channelId : config.room_id;
+        if (!roomId) throw new Error("Choose a channel first.");
+        if (config.casual) {
+          if (args.action === "batch")
+            throw new Error(
+              "Casual chat can inspect project databases but cannot modify them.",
+            );
+          if (
+            !(await canReadRoom(
+              roomId,
+              await casualPrincipal(config.room_id, config.bot_id),
+            ))
+          )
+            throw new Error("Channel not found.");
+        }
+        const available = await databases(roomId);
+        if (args.action === "list") return result(available);
+        const db = available.find(
+          (d: ChannelDatabase) => d.id === args.databaseId,
+        );
+        if (!db) throw new Error("Database not found in this channel.");
+        return result(
+          await databaseCall(db, args.action, args.input || {}, config.bot_id),
+        );
+      },
+    ),
     ...(config.casual
       ? [
           tool(

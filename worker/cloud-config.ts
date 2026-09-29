@@ -1,3 +1,5 @@
+import { scheduledMessageAllowed } from "./channel-timers";
+import { assertCasualActive, isCasual } from "./casual";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 import { ChatError } from "./team-auth";
@@ -39,7 +41,10 @@ export async function cloudAccess(threadId: string) {
       403,
       "This cloud agent no longer has access to the conversation.",
     );
-  return row;
+  await assertCasualActive(row.room_id, row.bot_id);
+  if (!(await scheduledMessageAllowed(row.root_id)))
+    throw new ChatError(403, "The timer creator no longer has channel access.");
+  return { ...row, casual: await isCasual(row.room_id) };
 }
 export async function cloudModel(config: CloudBotConfig) {
   const credential = await modelCredential(config.credential_id);

@@ -2326,3 +2326,274 @@
   line-height: 1.6;
   color: var(--muted-foreground);
 }
+
+/* Project work stays adjacent to its conversation. */
+.channel-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.channel-tabs button {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.channel-tabs button[aria-current="page"] {
+  color: var(--foreground);
+  border-bottom-color: var(--foreground);
+}
+.channel-tabs button:hover {
+  color: var(--foreground);
+  background: var(--muted);
+}
+.channel-section {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 24px clamp(16px, 4vw, 48px);
+}
+.channel-section > div {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.channel-section h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.channel-section h3,
+.channel-resource-list h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.project-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.project-toolbar strong {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+.project-help {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted-foreground);
+}
+.project-help a,
+.project-help button {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.project-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  padding: 4px 0;
+}
+.project-check input {
+  accent-color: var(--foreground);
+  width: 15px;
+  height: 15px;
+}
+.notes-layout {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  gap: 24px;
+}
+.notes-layout nav {
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  padding-right: 12px;
+}
+.notes-layout nav button {
+  display: flex;
+  width: 100%;
+  gap: 8px;
+  text-align: left;
+  align-items: flex-start;
+  padding: 10px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+.notes-layout nav button svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.notes-layout nav button span {
+  overflow-wrap: anywhere;
+}
+.notes-layout nav button.selected,
+.notes-layout nav button:hover {
+  background: var(--muted);
+}
+.notes-layout small,
+.project-row small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-top: 3px;
+}
+.note-document {
+  min-width: 0;
+}
+.note-document article > .project-help {
+  margin-bottom: 18px;
+}
+.note-document textarea {
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.note-preview {
+  min-height: 280px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+}
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.project-row > svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.project-row > a:first-child,
+.project-row-main {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.project-row > a:hover,
+.project-row-main a:hover {
+  text-decoration: underline;
+}
+.project-timer {
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+}
+.project-timer .project-toolbar {
+  margin-bottom: 7px;
+}
+.project-timer .project-help {
+  margin: 7px 0 12px;
+}
+.timer-instructions {
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.project-timer-form,
+.project-resource-form {
+  max-width: 560px;
+  margin: 20px 0 28px;
+}
+.channel-resource-list {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.channel-resource-list > button {
+  margin-top: 12px;
+}
+.channel-resource-options {
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.channel-resource-options summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.channel-resource-options[open] summary {
+  margin-bottom: 16px;
+}
+.channel-create-dialog {
+  max-height: 88dvh;
+  overflow-y: auto;
+}
+.worker-picker {
+  max-height: 160px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  border-radius: 7px;
+}
+.casual-suggestions {
+  padding: 10px 24px 0;
+  flex-shrink: 0;
+  max-height: 210px;
+  overflow: auto;
+}
+.casual-suggestions .project-toolbar {
+  margin-bottom: 8px;
+}
+.casual-proposal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.casual-proposal > div {
+  flex: 1;
+  min-width: 0;
+}
+.casual-proposal p {
+  color: var(--muted-foreground);
+  margin-top: 3px;
+}
+.embedded-workbench {
+  min-width: 0;
+}
+.embedded-workbench .workbench-tabs {
+  margin-bottom: 18px;
+}
+@media (max-width: 640px) {
+  .channel-tabs {
+    padding: 0 8px;
+    gap: 0;
+  }
+  .channel-tabs button {
+    padding: 10px 12px;
+  }
+  .channel-section {
+    padding: 18px 16px;
+  }
+  .notes-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .notes-layout nav {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 12px;
+    max-height: 180px;
+    overflow: auto;
+  }
+  .casual-suggestions {
+    padding: 8px 12px 0;
+  }
+  .casual-proposal {
+    flex-wrap: wrap;
+  }
+  .project-row {
+    gap: 8px;
+  }
+  .project-toolbar {
+    flex-wrap: wrap;
+  }
+}

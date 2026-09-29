@@ -1,3 +1,4 @@
+import { runChannelTimers } from "./channel-timers";
 export { CloudAgent, WorkspaceServiceProxy } from "./cloud-agent";
 import handler from "vinext/server/fetch-handler";
 import { handleApi } from "./api";
@@ -10,7 +11,11 @@ export { ChatDispatcher } from "./chat-dispatcher";
 
 export default {
   async scheduled(_controller: ScheduledController, env: Cloudflare.Env) {
-    await Promise.all([recoverAgentRequests(env), maintainPush(env)]);
+    await Promise.all([
+      recoverAgentRequests(env),
+      maintainPush(env),
+      runChannelTimers(),
+    ]);
   },
   async fetch(
     request: Request,

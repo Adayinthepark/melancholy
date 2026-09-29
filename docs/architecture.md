@@ -213,3 +213,30 @@ is shown only if reported by the CLI; unknown model names are not inferred.
 Cancelled/crashed turns without a usage report cannot be counted, and reports
 before this release cannot be reconstructed. These are usage records, not a
 replacement for the provider's billing statement.
+
+## Project workspace and private steward
+
+`casual_settings` selects one executable bot for the optional workspace steward.
+`casual_rooms` maps a human/bot pair to a private group room with fixed members.
+Top-level human turns use the room ID as the session root, like a bot DM, while
+ordinary channel threads retain their existing identities. Current settings and
+human/bot membership gate dispatch, model tools and task APIs. Cross-channel
+reads explicitly resolve the human principal; they do not weaken `requireRoom`
+or grant a general bot token access to other rooms. Integration overview and
+health responses contain metadata only. Suggestions are proposals; channel
+creation and external resource changes stay in authenticated human actions.
+
+`channel_notes` stores versioned Markdown with author and update provenance.
+`room_workers` links named Workers to existing integration IDs without granting
+credential use. Files are queried from posted, nondeleted `chat_files` records;
+R2 remains private. GitHub Issues continue to use the existing live API proxy.
+
+The minute Cron scans due `channel_timers`. A D1 batch gates each occurrence on
+its timer version, enabled flag, due time, membership and previous run completion.
+A deterministic occurrence ID and unique `(timer_id, scheduled_at)` protect the
+outbox against concurrent triggers. Timer roots have separate agent sessions,
+and replies can continue with the assigned bot. Missed intervals coalesce and
+next-at jumps forward. Pausing is for future scheduling; stopping a queued or
+running turn uses the existing conversation cancellation path. Soft deletion
+preserves occurrence provenance and chat history. See [project workspace](project-workspace.md)
+for setup, access boundaries, cadence semantics and supported actions.

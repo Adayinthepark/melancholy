@@ -99,3 +99,20 @@ same CLI session across turns. Queued turns wait while that connector is offline
 
 Repository proposals and task-scoped credentials are documented in
 [Connections and Issues](connections.md).
+
+## Project Notes and Casual tasks
+
+Channel members can read `GET /api/v1/rooms/:roomId/notes`, `/files` and
+`/workers`. Notes can be created with `POST /notes {title,content,requestId?}`
+and edited with `PUT /notes/:id {title,content,version}`; stale versions return 409. Task credentials are restricted to the task's channel. `requestId` is an
+optional UUID for idempotent creation retries. Notes are channel documents;
+private Casual chats do not have a shared Notes section.
+
+Only an active Server task in the currently assigned private Casual chat can
+use `GET /api/v1/casual/context`. Without parameters it returns the human
+principal's accessible channels and integration metadata. Use `channelId` and
+optional `query` for bounded channel context, or `integrationId` to verify a
+GitHub/Cloudflare connection. No secret values are returned. Posting
+`/api/v1/casual/suggestions {name,topic,brief}` creates a proposal for that user
+to review; it does not create a channel. General bot API tokens cannot use
+these cross-channel task capabilities.

@@ -1,3 +1,5 @@
+import { projectApi } from "./project-api";
+import { casualSettings, isCasual, assertCasualActive } from "./casual";
 import { cloudBotInput, modelCredential } from "./cloud-config";
 import { workspaceInfo } from "./workspace-settings";
 import { queuePush, drainPush } from "./push";
@@ -124,7 +126,7 @@ function event(roomId: string, id: string, type: string) {
 }
 async function listRooms(who: Identity) {
   const list = await env.DB.prepare(
-    `SELECT r.*,EXISTS(SELECT 1 FROM room_members rm WHERE rm.room_id=r.id AND rm.person_id=?) AS joined,
+    `SELECT r.*,EXISTS(SELECT 1 FROM casual_rooms cr WHERE cr.room_id=r.id) AS casual,EXISTS(SELECT 1 FROM room_members rm WHERE rm.room_id=r.id AND rm.person_id=?) AS joined,
     COALESCE((SELECT MAX(seq) FROM chat_messages m WHERE m.room_id=r.id),0) AS last_seq,
     COALESCE((SELECT last_seq FROM room_reads rr WHERE rr.room_id=r.id AND rr.person_id=?),0) AS last_read,
     (SELECT COUNT(*) FROM chat_messages m WHERE m.room_id=r.id AND m.author_id<>? AND m.deleted_at IS NULL AND m.seq>COALESCE((SELECT last_seq FROM room_reads rr WHERE rr.room_id=r.id AND rr.person_id=?),0)) AS unread,
@@ -222,7 +224,12 @@ async function agentStatements(
   let bots = mentioned.filter(
     (p) => p.kind === "bot" && (p.server_id || p.cloud_agent),
   );
-  if (r.kind === "dm" && !m.parent_id)
+  const casual = await isCasual(r.id);
+  if (casual) {
+    const config = await casualSettings();
+    await assertCasualActive(r.id, config.bot_id || "");
+  }
+  if ((r.kind === "dm" || casual) && !m.parent_id)
     bots = (
       await env.DB.prepare(
         `SELECT p.${personColumns.split(",").join(",p.")} FROM room_members rm JOIN people p ON p.id=rm.person_id WHERE rm.room_id=? AND p.kind='bot' AND p.active=1 AND (p.server_id IS NOT NULL OR p.cloud_agent=1)`,
@@ -241,7 +248,7 @@ async function agentStatements(
   }
   const statements: D1PreparedStatement[] = [];
   for (const bot of bots) {
-    const rootId = m.parent_id || (r.kind === "dm" ? r.id : m.id);
+    const rootId = m.parent_id || (r.kind === "dm" || casual ? r.id : m.id);
     const digest = await hash(r.id + ":" + rootId + ":" + bot.id);
     const threadId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
     statements.push(
@@ -454,14 +461,25 @@ async function route(request: Request): Promise<Response> {
         /^\/api\/chat\/(rooms\/[^/]+\/(repositories|connections)|repositories\/[^/]+\/(issues|labels|assignees)(\/\d+(\/comments)?)?)$/.test(
           path,
         )) ||
+      (method === "GET" &&
+        /^\/api\/chat\/(casual\/context|rooms\/[^/]+\/(notes|files|workers))$/.test(
+          path,
+        )) ||
+      (method === "POST" && path === "/api/chat/casual/suggestions") ||
+      (["POST", "PUT"].includes(method) &&
+        /^\/api\/chat\/rooms\/[^/]+\/notes(?:\/[^/]+)?$/.test(path)) ||
       (method === "POST" &&
         /^\/api\/chat\/rooms\/[^/]+\/repositories$/.test(path))
     )
   )
     throw new ChatError(
       403,
-      "Task credentials can only read repository context and propose repository links.",
+      "This endpoint is unavailable to task credentials.",
     );
+  if (who.taskRunId && who.roomScope)
+    await assertCasualActive(who.roomScope, who.id);
+  const project = await projectApi(request, who, path);
+  if (project) return project;
   const extra = await workbench(request, who, path);
   if (extra) return extra;
   if (path === "/api/chat/workspace" && method === "GET") {
@@ -476,6 +494,7 @@ async function route(request: Request): Promise<Response> {
     return json({
       ...(await workspaceInfo()),
       me,
+      casual: await casualSettings(),
       people: people.results,
       rooms,
     });
@@ -552,6 +571,7 @@ async function route(request: Request): Promise<Response> {
     human(who);
     const input = z
       .object({
+        id: z.string().uuid().optional(),
         kind: z.enum(["channel", "dm", "group"]).default("channel"),
         name: z.string().trim().max(80).default(""),
         topic: z.string().max(200).default(""),
@@ -584,7 +604,28 @@ async function route(request: Request): Promise<Response> {
         .first<{ id: string }>();
       if (existing) return json(existing);
     }
-    const id = crypto.randomUUID(),
+    if (input.id) {
+      const existing = await env.DB.prepare("SELECT * FROM rooms WHERE id=?")
+        .bind(input.id)
+        .first<Room>();
+      if (existing) {
+        if (
+          existing.created_by !== who.id ||
+          existing.kind !== input.kind ||
+          existing.name !== input.name ||
+          existing.topic !== input.topic ||
+          existing.private !==
+            (input.kind === "channel" ? Number(input.private) : 1)
+        )
+          throw new ChatError(
+            409,
+            "This conversation identifier is already in use.",
+          );
+        await requireRoom(existing.id, who, true);
+        return json({ id: existing.id });
+      }
+    }
+    const id = input.id || crypto.randomUUID(),
       now = Date.now();
     await env.DB.batch([
       env.DB.prepare(
@@ -615,6 +656,15 @@ async function route(request: Request): Promise<Response> {
   );
   if (roomMatch) {
     const [, id, action, target] = roomMatch;
+    if (
+      !["GET", "HEAD"].includes(method) &&
+      (!action || action === "members" || action === "join") &&
+      (await isCasual(id))
+    )
+      throw new ChatError(
+        403,
+        "Casual chat is private and its participants are managed in settings.",
+      );
     await requireRoom(id, who);
     const r = await room(id);
     if (!action && method === "PATCH") {

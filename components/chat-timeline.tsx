@@ -69,6 +69,7 @@ export function ChatTimeline({
   onOlder,
   onThread,
   onChange,
+  onSaveNote,
   thread = false,
   unreadAfter = 0,
   onRetry,
@@ -79,6 +80,7 @@ export function ChatTimeline({
   onOlder: () => void;
   onThread: (message: TeamMessage) => void;
   onChange: () => Promise<void>;
+  onSaveNote?: (message: TeamMessage) => void;
   thread?: boolean;
   unreadAfter?: number;
   onRetry?: (message: TeamMessage) => void;
@@ -128,6 +130,7 @@ export function ChatTimeline({
                     me={me}
                     onThread={onThread}
                     onChange={onChange}
+                    onSaveNote={onSaveNote}
                     thread={thread}
                     onRetry={onRetry}
                   />
@@ -146,6 +149,7 @@ export function ChatRow({
   me,
   onThread,
   onChange,
+  onSaveNote,
   thread = false,
   onRetry,
 }: {
@@ -153,6 +157,7 @@ export function ChatRow({
   me: Person;
   onThread: (m: TeamMessage) => void;
   onChange: () => Promise<void>;
+  onSaveNote?: (message: TeamMessage) => void;
   thread?: boolean;
   onRetry?: (message: TeamMessage) => void;
 }) {
@@ -411,6 +416,12 @@ export function ChatRow({
                   <Link />
                   Copy link
                 </DropdownMenuItem>
+                {onSaveNote && m.text && (
+                  <DropdownMenuItem onClick={() => onSaveNote(m)}>
+                    <FileText />
+                    Save to Notes
+                  </DropdownMenuItem>
+                )}
                 {m.author_id === me.id && (
                   <DropdownMenuItem
                     onClick={() => {

@@ -1,4 +1,5 @@
 "use client";
+import { CasualSettings } from "./casual-chat";
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -19,6 +20,7 @@ import {
   Bot,
   ChartNoAxesColumn,
   UserRound,
+  MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Mark } from "./brand";
@@ -56,6 +58,7 @@ const groups = [
     items: [
       { id: "servers", label: "Servers", icon: ServerIcon },
       { id: "bots", label: "Bots", icon: Bot },
+      { id: "casual", label: "Casual chat", icon: MessageSquare },
     ],
   },
   {
@@ -71,6 +74,7 @@ const details: Record<string, string> = {
   llm: "OpenAI compatible, Anthropic compatible, DeepSeek, Kimi and GLM providers.",
   custom: "Service credentials, signing keys and other private values.",
   servers: "Machines running Codex or Claude Code.",
+  casual: "Your private workspace steward, powered by an agent you choose.",
   bots: "Cloud agents, connected agents, message API tokens and webhooks.",
   usage:
     "Reported token usage by server, channel and thread. Input includes cached tokens.",
@@ -218,6 +222,9 @@ export function WorkspaceSettingsPage() {
             <p>Only the workspace owner can manage these settings.</p>
           ) : (
             <>
+              {section === "casual" && (
+                <CasualSettings workspace={workspace} onChange={refresh} />
+              )}
               {section === "general" && (
                 <GeneralSettings workspace={workspace} onChange={refresh} />
               )}

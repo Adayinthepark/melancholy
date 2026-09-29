@@ -1,3 +1,12 @@
+import { integrationHealth } from "./integration-health";
+import {
+  casualPrincipal,
+  workspaceOverview,
+  readChannel,
+  suggestChannel,
+  isCasual,
+} from "./casual";
+import { notes, saveNote, channelFiles } from "./channel-data";
 import { Type, type TSchema } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { WorkspaceClient } from "@cloudflare/computer";
@@ -47,6 +56,89 @@ export function cloudTools({
     return { name, label: name, description, parameters, execute } as AgentTool;
   }
   return [
+    ...(config.casual
+      ? [
+          tool(
+            "integration_status",
+            "In Casual chat: verify GitHub/Cloudflare authentication without exposing credentials. Model and custom credentials return configuration status only.",
+            Type.Object({ integrationId: Type.String() }),
+            async (_id, args) =>
+              result(
+                await integrationHealth(
+                  await casualPrincipal(config.room_id, config.bot_id),
+                  args.integrationId,
+                ),
+              ),
+          ),
+          tool(
+            "workspace_overview",
+            "In Casual chat only: inspect the human user's accessible channels and integration metadata. Never returns secrets.",
+            Type.Object({}),
+            async () =>
+              result(
+                await workspaceOverview(
+                  await casualPrincipal(config.room_id, config.bot_id),
+                ),
+              ),
+          ),
+          tool(
+            "workspace_channel",
+            "In Casual chat only: read recent discussion, Notes and file metadata in an accessible channel.",
+            Type.Object({
+              channelId: Type.String(),
+              query: Type.Optional(Type.String({ maxLength: 200 })),
+            }),
+            async (_id, args) =>
+              result(
+                await readChannel(
+                  await casualPrincipal(config.room_id, config.bot_id),
+                  args.channelId,
+                  args.query,
+                ),
+              ),
+          ),
+          tool(
+            "suggest_channel",
+            "In Casual chat only: propose a channel and project brief. The human reviews and creates it.",
+            Type.Object({
+              name: Type.String(),
+              topic: Type.String(),
+              brief: Type.String(),
+            }),
+            async (_id, args) =>
+              result(await suggestChannel(config.room_id, config.bot_id, args)),
+          ),
+        ]
+      : []),
+    tool(
+      "channel_notes",
+      "Read this channel's shared project Notes.",
+      Type.Object({}),
+      async () => result(await notes(config.room_id)),
+    ),
+    tool(
+      "save_note",
+      "Save confirmed findings in this channel. Editing requires the note's current version. Do not use this for Casual chat.",
+      Type.Object({
+        title: Type.String(),
+        content: Type.String(),
+        id: Type.Optional(Type.String()),
+        version: Type.Optional(Type.Integer()),
+      }),
+      async (_id, args) => {
+        if (await isCasual(config.room_id))
+          throw new Error("Recommend a channel first.");
+        return result(
+          await saveNote(config.room_id, config.bot_id, args, args.id),
+        );
+      },
+    ),
+    tool(
+      "channel_files",
+      "List this conversation's posted R2 files.",
+      Type.Object({}),
+      async () => result(await channelFiles(config.room_id)),
+    ),
     tool(
       "update_plan",
       "Record and update a short task plan. Mark steps completed only after checking results.",

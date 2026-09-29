@@ -1,3 +1,6 @@
+import { casualContext, assertCasualActive } from "./casual";
+import { scheduledMessageAllowed } from "./channel-timers";
+import { ChatError } from "./team-auth";
 import { DurableObject } from "cloudflare:workers";
 import type { Runtime, Attachment } from "../lib/protocol";
 import { repositoryContext } from "./integrations";
@@ -47,6 +50,18 @@ export class ChatDispatcher extends DurableObject<Cloudflare.Env> {
           await this.finish(row, "Bot is unavailable.");
           continue;
         }
+        try {
+          await assertCasualActive(roomId, row.bot_id);
+          if (!(await scheduledMessageAllowed(row.message_id)))
+            throw new ChatError(
+              403,
+              "The timer creator no longer has channel access.",
+            );
+        } catch (e) {
+          if (!(e instanceof ChatError)) throw e;
+          await this.finish(row, e.message);
+          continue;
+        }
         const result = await this.env.CONVERSATIONS.getByName(
           row.thread_id,
         ).send({
@@ -61,7 +76,9 @@ export class ChatDispatcher extends DurableObject<Cloudflare.Env> {
               ).all<Person>()
             ).results,
           ),
-          context: await repositoryContext(roomId, row.root_id),
+          context:
+            (await repositoryContext(roomId, row.root_id)) +
+            (await casualContext(roomId, row.bot_id)),
           id: row.message_id,
           attachments: JSON.parse(row.attachments) as Attachment[],
           chat: {

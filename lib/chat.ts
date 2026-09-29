@@ -11,6 +11,7 @@ export type Person = {
   avatar_key?: string | null;
 };
 export type Room = {
+  casual?: number;
   id: string;
   kind: "channel" | "dm" | "group";
   name: string;
@@ -49,6 +50,7 @@ export type TeamMessage = {
   delivery_error?: string;
 };
 export type TeamWorkspace = {
+  casual?: { enabled: number; bot_id: string | null };
   name: string;
   description?: string;
   me: Person;

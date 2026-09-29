@@ -1,4 +1,5 @@
 "use client";
+import { ChannelResources } from "./channel-resources";
 import { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
 import {
@@ -25,11 +26,13 @@ import type {
 } from "@/lib/workbench";
 export function ChannelWorkbench({
   open,
+  embedded = false,
   onOpenChange,
   room,
   workspace,
   onThread,
 }: {
+  embedded?: boolean;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   room: Room;
@@ -253,67 +256,42 @@ export function ChannelWorkbench({
       </FieldGroup>
     </form>
   );
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="channel-workbench sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>#{room.name}</DialogTitle>
-          <DialogDescription className="sr-only">
-            Repositories, GitHub issues and channel credentials.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="workbench-tabs">
-          <Button
-            variant={tab === "issues" ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setTab("issues")}
-          >
-            Issues
-          </Button>
-          <Button
-            variant={tab === "repositories" ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setTab("repositories")}
-          >
-            Repositories & connections
-          </Button>
-        </div>
-        {tab === "repositories" ? (
-          <div className="settings-section">
-            <div>
-              {repos.map((r) => (
-                <div className="repository-row" key={r.id}>
-                  <a href={r.url} target="_blank" rel="noreferrer">
-                    {r.full_name}
-                  </a>
-                  {!r.approved && (
-                    <Badge variant="outline">Awaiting approval</Badge>
-                  )}
-                  {admin && (
-                    <div className="flex gap-1">
-                      {!r.approved && (
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() =>
-                            void act(() =>
-                              api(
-                                "/chat/rooms/" +
-                                  room.id +
-                                  "/repositories/" +
-                                  r.id,
-                                { method: "PUT" },
-                              ),
-                            )
-                          }
-                        >
-                          Approve
-                        </Button>
-                      )}
+  const content = (
+    <>
+      <div className="workbench-tabs">
+        <Button
+          variant={tab === "issues" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => setTab("issues")}
+        >
+          Issues
+        </Button>
+        <Button
+          variant={tab === "repositories" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => setTab("repositories")}
+        >
+          Repositories & connections
+        </Button>
+      </div>
+      {tab === "repositories" ? (
+        <div className="settings-section">
+          <ChannelResources roomId={room.id} admin={admin} onChange={refresh} />
+          <div>
+            {repos.map((r) => (
+              <div className="repository-row" key={r.id}>
+                <a href={r.url} target="_blank" rel="noreferrer">
+                  {r.full_name}
+                </a>
+                {!r.approved && (
+                  <Badge variant="outline">Awaiting approval</Badge>
+                )}
+                {admin && (
+                  <div className="flex gap-1">
+                    {!r.approved && (
                       <Button
                         size="xs"
-                        variant="ghost"
+                        variant="outline"
                         disabled={busy}
                         onClick={() =>
                           void act(() =>
@@ -322,385 +300,412 @@ export function ChannelWorkbench({
                                 room.id +
                                 "/repositories/" +
                                 r.id,
-                              { method: "DELETE" },
+                              { method: "PUT" },
                             ),
                           )
                         }
                       >
-                        {r.approved ? "Unlink" : "Reject"}
+                        Approve
                       </Button>
-                    </div>
+                    )}
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() =>
+                        void act(() =>
+                          api(
+                            "/chat/rooms/" + room.id + "/repositories/" + r.id,
+                            { method: "DELETE" },
+                          ),
+                        )
+                      }
+                    >
+                      {r.approved ? "Unlink" : "Reject"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {admin && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void act(async () => {
+                  await post("/chat/rooms/" + room.id + "/repositories", {
+                    connectionId,
+                    fullName,
+                  });
+                  setFullName("");
+                });
+              }}
+            >
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="repository-connection">
+                    GitHub connection
+                  </FieldLabel>
+                  <Choice
+                    id="repository-connection"
+                    value={connectionId}
+                    onChange={setConnectionId}
+                    options={available
+                      .filter((c) => c.provider === "github")
+                      .map((c) => ({ value: c.id, label: c.name }))}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="repository-name">Repository</FieldLabel>
+                  <Input
+                    id="repository-name"
+                    placeholder="owner/repository"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                  />
+                </Field>
+                <Button disabled={busy || !connectionId} variant="outline">
+                  Link repository
+                </Button>
+              </FieldGroup>
+            </form>
+          )}
+          <div className="settings-section">
+            <h3>Agent credentials</h3>
+            <p className="text-sm text-muted-foreground">
+              Allow this channel's agents to use a connection. Its token becomes
+              available to tasks on your servers. One connection per service can
+              be enabled.
+            </p>
+            {(admin ? available : connections).map((c) => {
+              const assigned = connections.find((x) => x.id === c.id);
+              return (
+                <div className="repository-row" key={c.id}>
+                  <div>
+                    <strong>{c.name}</strong>
+                    <small>
+                      {c.provider} · {c.identity}
+                    </small>
+                  </div>
+                  {admin ? (
+                    <Choice
+                      id={"grant-" + c.id}
+                      value={
+                        assigned?.agent_enabled
+                          ? "enabled"
+                          : assigned
+                            ? "linked"
+                            : "none"
+                      }
+                      onChange={(v) =>
+                        void act(() =>
+                          api(
+                            "/chat/rooms/" + room.id + "/connections/" + c.id,
+                            {
+                              method: v === "none" ? "DELETE" : "PUT",
+                              ...(v === "none"
+                                ? {}
+                                : {
+                                    body: JSON.stringify({
+                                      agentEnabled: v === "enabled",
+                                    }),
+                                  }),
+                            },
+                          ),
+                        )
+                      }
+                      options={[
+                        { value: "none", label: "Not connected" },
+                        {
+                          value: "linked",
+                          label: "Connected, no agent access",
+                        },
+                        { value: "enabled", label: "Agent access enabled" },
+                      ]}
+                    />
+                  ) : (
+                    <span>
+                      {assigned?.agent_enabled
+                        ? "Agent access enabled"
+                        : "Connected"}
+                    </span>
                   )}
                 </div>
-              ))}
-            </div>
-            {admin && (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void act(async () => {
-                    await post("/chat/rooms/" + room.id + "/repositories", {
-                      connectionId,
-                      fullName,
-                    });
-                    setFullName("");
-                  });
-                }}
-              >
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="repository-connection">
-                      GitHub connection
-                    </FieldLabel>
-                    <Choice
-                      id="repository-connection"
-                      value={connectionId}
-                      onChange={setConnectionId}
-                      options={available
-                        .filter((c) => c.provider === "github")
-                        .map((c) => ({ value: c.id, label: c.name }))}
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="repository-name">
-                      Repository
-                    </FieldLabel>
-                    <Input
-                      id="repository-name"
-                      placeholder="owner/repository"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      required
-                    />
-                  </Field>
-                  <Button disabled={busy || !connectionId} variant="outline">
-                    Link repository
-                  </Button>
-                </FieldGroup>
-              </form>
-            )}
-            <div className="settings-section">
-              <h3>Agent credentials</h3>
+              );
+            })}
+            {!available.length && admin && (
               <p className="text-sm text-muted-foreground">
-                Allow this channel's agents to use a connection. Its token
-                becomes available to tasks on your servers. One connection per
-                service can be enabled.
+                Add a connection in Settings → Connections.
               </p>
-              {(admin ? available : connections).map((c) => {
-                const assigned = connections.find((x) => x.id === c.id);
-                return (
-                  <div className="repository-row" key={c.id}>
-                    <div>
-                      <strong>{c.name}</strong>
-                      <small>
-                        {c.provider} · {c.identity}
-                      </small>
-                    </div>
-                    {admin ? (
-                      <Choice
-                        id={"grant-" + c.id}
-                        value={
-                          assigned?.agent_enabled
-                            ? "enabled"
-                            : assigned
-                              ? "linked"
-                              : "none"
-                        }
-                        onChange={(v) =>
-                          void act(() =>
-                            api(
-                              "/chat/rooms/" + room.id + "/connections/" + c.id,
-                              {
-                                method: v === "none" ? "DELETE" : "PUT",
-                                ...(v === "none"
-                                  ? {}
-                                  : {
-                                      body: JSON.stringify({
-                                        agentEnabled: v === "enabled",
-                                      }),
-                                    }),
-                              },
-                            ),
-                          )
-                        }
-                        options={[
-                          { value: "none", label: "Not connected" },
-                          {
-                            value: "linked",
-                            label: "Connected, no agent access",
-                          },
-                          { value: "enabled", label: "Agent access enabled" },
-                        ]}
-                      />
-                    ) : (
-                      <span>
-                        {assigned?.agent_enabled
-                          ? "Agent access enabled"
-                          : "Connected"}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-              {!available.length && admin && (
-                <p className="text-sm text-muted-foreground">
-                  Add a connection in Settings → Connections.
-                </p>
-              )}
-            </div>
+            )}
           </div>
-        ) : (
-          <div className="issue-workspace">
-            <div className="issue-toolbar">
-              <Choice
-                id="issue-repo"
-                value={repoId}
-                onChange={(id) => {
-                  setRepoId(id);
-                  setSelected(null);
-                  setCreate(false);
-                  setPage(1);
-                }}
-                options={repos
-                  .filter((r) => r.approved)
-                  .map((r) => ({ value: r.id, label: r.full_name }))}
-              />
-              <Choice
-                id="issue-state"
-                value={state}
-                onChange={(v) => {
-                  setState(v);
-                  setPage(1);
-                  setSelected(null);
-                }}
-                options={[
-                  { value: "open", label: "Open" },
-                  { value: "closed", label: "Closed" },
-                  { value: "all", label: "All" },
-                ]}
-              />
-              {repo && room.joined > 0 && (
-                <Button size="sm" onClick={() => edit()}>
-                  New issue
+        </div>
+      ) : (
+        <div className="issue-workspace">
+          <div className="issue-toolbar">
+            <Choice
+              id="issue-repo"
+              value={repoId}
+              onChange={(id) => {
+                setRepoId(id);
+                setSelected(null);
+                setCreate(false);
+                setPage(1);
+              }}
+              options={repos
+                .filter((r) => r.approved)
+                .map((r) => ({ value: r.id, label: r.full_name }))}
+            />
+            <Choice
+              id="issue-state"
+              value={state}
+              onChange={(v) => {
+                setState(v);
+                setPage(1);
+                setSelected(null);
+              }}
+              options={[
+                { value: "open", label: "Open" },
+                { value: "closed", label: "Closed" },
+                { value: "all", label: "All" },
+              ]}
+            />
+            {repo && room.joined > 0 && (
+              <Button size="sm" onClick={() => edit()}>
+                New issue
+              </Button>
+            )}
+          </div>
+          {!repo ? (
+            <p>Link a GitHub repository to see its issues.</p>
+          ) : create ? (
+            issueForm
+          ) : selected ? (
+            <section className="issue-detail">
+              <div className="issue-actions">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelected(null)}
+                >
+                  Back to issues
                 </Button>
-              )}
-            </div>
-            {!repo ? (
-              <p>Link a GitHub repository to see its issues.</p>
-            ) : create ? (
-              issueForm
-            ) : selected ? (
-              <section className="issue-detail">
-                <div className="issue-actions">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelected(null)}
-                  >
-                    Back to issues
-                  </Button>
-                  <a href={selected.html_url} target="_blank" rel="noreferrer">
-                    Open in GitHub
-                  </a>
-                </div>
-                {editing ? (
-                  issueForm
-                ) : (
-                  <>
-                    <h2>
-                      <span>#{selected.number}</span> {selected.title}
-                    </h2>
-                    <div className="issue-meta">
-                      <Badge variant="outline">{selected.state}</Badge>
-                      {selected.labels.map((l) => (
-                        <Badge key={l.name} variant="secondary">
-                          {l.name}
-                        </Badge>
-                      ))}
-                      <span>
-                        {selected.assignees.map((p) => p.login).join(", ")}
-                      </span>
-                    </div>
-                    <div className="markdown">
-                      <MessageMarkdown text={selected.body || ""} />
-                    </div>
-                    {room.joined > 0 && (
-                      <div className="issue-actions">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => edit(selected)}
-                        >
-                          Edit issue
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() =>
-                            void act(async () => {
-                              const value = await api<Issue>(
-                                "/chat/repositories/" +
-                                  repoId +
-                                  "/issues/" +
-                                  selected.number,
-                                {
-                                  method: "PATCH",
-                                  body: JSON.stringify({
-                                    state:
-                                      selected.state === "open"
-                                        ? "closed"
-                                        : "open",
-                                  }),
-                                },
-                              );
-                              setIssues((list) =>
-                                list.map((i) =>
-                                  i.number === value.number ? value : i,
-                                ),
-                              );
-                              setSelected(value);
-                            })
-                          }
-                        >
-                          {selected.state === "open"
-                            ? "Close issue"
-                            : "Reopen issue"}
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={busy}
-                          onClick={() =>
-                            void act(async () => {
-                              const result = await post<{
-                                message: TeamMessage;
-                              }>("/chat/rooms/" + room.id + "/messages", {
-                                id: crypto.randomUUID(),
-                                text:
-                                  "[" +
-                                  repo.full_name +
-                                  " #" +
-                                  selected.number +
-                                  ": " +
-                                  selected.title +
-                                  "](" +
-                                  selected.html_url +
-                                  ")\n\n" +
-                                  (selected.body || "").slice(0, 28000),
-                              });
-                              await post(
-                                "/chat/repositories/" +
-                                  repoId +
-                                  "/issues/" +
-                                  selected.number +
-                                  "/threads",
-                                { rootId: result.message.id },
-                              );
-                              onThread(result.message.id);
-                            })
-                          }
-                        >
-                          Work in thread
-                        </Button>
-                      </div>
-                    )}
-                    {comments.map((c) => (
-                      <article className="issue-comment" key={c.id}>
-                        <strong>{c.user.login}</strong>
-                        <div className="markdown">
-                          <MessageMarkdown text={c.body} />
-                        </div>
-                      </article>
+                <a href={selected.html_url} target="_blank" rel="noreferrer">
+                  Open in GitHub
+                </a>
+              </div>
+              {editing ? (
+                issueForm
+              ) : (
+                <>
+                  <h2>
+                    <span>#{selected.number}</span> {selected.title}
+                  </h2>
+                  <div className="issue-meta">
+                    <Badge variant="outline">{selected.state}</Badge>
+                    {selected.labels.map((l) => (
+                      <Badge key={l.name} variant="secondary">
+                        {l.name}
+                      </Badge>
                     ))}
-                    {room.joined > 0 && (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
+                    <span>
+                      {selected.assignees.map((p) => p.login).join(", ")}
+                    </span>
+                  </div>
+                  <div className="markdown">
+                    <MessageMarkdown text={selected.body || ""} />
+                  </div>
+                  {room.joined > 0 && (
+                    <div className="issue-actions">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => edit(selected)}
+                      >
+                        Edit issue
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() =>
                           void act(async () => {
-                            const c = await post<IssueComment>(
+                            const value = await api<Issue>(
+                              "/chat/repositories/" +
+                                repoId +
+                                "/issues/" +
+                                selected.number,
+                              {
+                                method: "PATCH",
+                                body: JSON.stringify({
+                                  state:
+                                    selected.state === "open"
+                                      ? "closed"
+                                      : "open",
+                                }),
+                              },
+                            );
+                            setIssues((list) =>
+                              list.map((i) =>
+                                i.number === value.number ? value : i,
+                              ),
+                            );
+                            setSelected(value);
+                          })
+                        }
+                      >
+                        {selected.state === "open"
+                          ? "Close issue"
+                          : "Reopen issue"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={busy}
+                        onClick={() =>
+                          void act(async () => {
+                            const result = await post<{
+                              message: TeamMessage;
+                            }>("/chat/rooms/" + room.id + "/messages", {
+                              id: crypto.randomUUID(),
+                              text:
+                                "[" +
+                                repo.full_name +
+                                " #" +
+                                selected.number +
+                                ": " +
+                                selected.title +
+                                "](" +
+                                selected.html_url +
+                                ")\n\n" +
+                                (selected.body || "").slice(0, 28000),
+                            });
+                            await post(
                               "/chat/repositories/" +
                                 repoId +
                                 "/issues/" +
                                 selected.number +
-                                "/comments",
-                              { body: comment },
+                                "/threads",
+                              { rootId: result.message.id },
                             );
-                            setComments((list) => [...list, c]);
-                            setComment("");
-                          });
-                        }}
+                            onThread(result.message.id);
+                          })
+                        }
                       >
-                        <FieldGroup>
-                          <Field>
-                            <FieldLabel htmlFor="issue-comment">
-                              Comment
-                            </FieldLabel>
-                            <Textarea
-                              id="issue-comment"
-                              value={comment}
-                              onChange={(e) => setComment(e.target.value)}
-                              required
-                            />
-                          </Field>
-                          <Button disabled={busy || !comment.trim()} size="sm">
-                            Comment
-                          </Button>
-                        </FieldGroup>
-                      </form>
-                    )}
-                  </>
-                )}
-              </section>
-            ) : loading ? (
-              <p>Loading issues…</p>
-            ) : (
-              <>
-                <div className="issue-list">
-                  {issues.map((i) => (
-                    <button
-                      key={i.number}
-                      className="issue-row"
-                      onClick={() => void view(i)}
-                    >
-                      <span className="issue-number">#{i.number}</span>
-                      <span>
-                        <strong>{i.title}</strong>
-                        <small>
-                          {i.labels.map((l) => l.name).join(", ")}
-                          {i.assignees.length
-                            ? " · " + i.assignees.map((a) => a.login).join(", ")
-                            : ""}
-                        </small>
-                      </span>
-                      <span>{i.comments ? i.comments + " comments" : ""}</span>
-                    </button>
+                        Work in thread
+                      </Button>
+                    </div>
+                  )}
+                  {comments.map((c) => (
+                    <article className="issue-comment" key={c.id}>
+                      <strong>{c.user.login}</strong>
+                      <div className="markdown">
+                        <MessageMarkdown text={c.body} />
+                      </div>
+                    </article>
                   ))}
-                  {!issues.length && <p>No issues in this view.</p>}
-                </div>
-                <div className="issue-actions">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => p - 1)}
+                  {room.joined > 0 && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void act(async () => {
+                          const c = await post<IssueComment>(
+                            "/chat/repositories/" +
+                              repoId +
+                              "/issues/" +
+                              selected.number +
+                              "/comments",
+                            { body: comment },
+                          );
+                          setComments((list) => [...list, c]);
+                          setComment("");
+                        });
+                      }}
+                    >
+                      <FieldGroup>
+                        <Field>
+                          <FieldLabel htmlFor="issue-comment">
+                            Comment
+                          </FieldLabel>
+                          <Textarea
+                            id="issue-comment"
+                            value={comment}
+                            onChange={(e) => setComment(e.target.value)}
+                            required
+                          />
+                        </Field>
+                        <Button disabled={busy || !comment.trim()} size="sm">
+                          Comment
+                        </Button>
+                      </FieldGroup>
+                    </form>
+                  )}
+                </>
+              )}
+            </section>
+          ) : loading ? (
+            <p>Loading issues…</p>
+          ) : (
+            <>
+              <div className="issue-list">
+                {issues.map((i) => (
+                  <button
+                    key={i.number}
+                    className="issue-row"
+                    onClick={() => void view(i)}
                   >
-                    Previous
-                  </Button>
-                  <span>Page {page}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={!more}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
+                    <span className="issue-number">#{i.number}</span>
+                    <span>
+                      <strong>{i.title}</strong>
+                      <small>
+                        {i.labels.map((l) => l.name).join(", ")}
+                        {i.assignees.length
+                          ? " · " + i.assignees.map((a) => a.login).join(", ")
+                          : ""}
+                      </small>
+                    </span>
+                    <span>{i.comments ? i.comments + " comments" : ""}</span>
+                  </button>
+                ))}
+                {!issues.length && <p>No issues in this view.</p>}
+              </div>
+              <div className="issue-actions">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={page === 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  Previous
+                </Button>
+                <span>Page {page}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!more}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+  if (embedded) return <div className="embedded-workbench">{content}</div>;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="channel-workbench sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>#{room.name}</DialogTitle>
+          <DialogDescription>
+            Repositories, Workers, GitHub issues and channel credentials.
+          </DialogDescription>
+        </DialogHeader>
+        {content}
       </DialogContent>
     </Dialog>
   );

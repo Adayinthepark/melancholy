@@ -2,6 +2,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AnimatedIcon } from "./animated-icon";
+import { ChannelSections } from "./channel-sections";
+import { CasualSuggestions } from "./casual-chat";
+import { ResourceFields, applyResources } from "./channel-resources";
+import { emptyResources, type ChannelSuggestion } from "@/lib/projects";
+import { Textarea } from "./ui/textarea";
 import { ThreadPanel } from "./thread-panel";
 import Link from "next/link";
 import { MessagesSkeleton, WorkspaceSkeleton } from "./loading-states";
@@ -103,6 +108,14 @@ function merged(previous: MessagePage, next: MessagePage): MessagePage {
 export function TeamWorkspaceApp({
   focusedThread,
 }: { focusedThread?: string } = {}) {
+  const [channelTab, setChannelTab] = useState("chat");
+  const [resources, setResources] = useState(emptyResources),
+    [createdRoom, setCreatedRoom] = useState(""),
+    [createBrief, setCreateBrief] = useState(""),
+    [suggestion, setSuggestion] = useState<ChannelSuggestion | null>(null);
+  const briefSaved = useRef(false);
+  const createRequest = useRef(crypto.randomUUID()),
+    briefRequest = useRef(crypto.randomUUID());
   const reducedMotion = useReducedMotion();
   const threadTrigger = useRef<HTMLElement | null>(null);
   const restoreThreadFocus = useRef(false);
@@ -391,6 +404,7 @@ export function TeamWorkspaceApp({
     };
   }, [query, searchOpen]);
   function choose(id: string, thread: string | null = null) {
+    setChannelTab("chat");
     setRoomId(id);
     setThreadId(thread);
     setMobile(false);
@@ -475,12 +489,48 @@ export function TeamWorkspaceApp({
   }
 
   function startCreate(kind: "channel" | "message") {
+    createRequest.current = crypto.randomUUID();
+    briefRequest.current = crypto.randomUUID();
+    setResources(emptyResources());
+    setCreatedRoom("");
+    setCreateBrief("");
+    setSuggestion(null);
+    briefSaved.current = false;
     setCreate(kind);
     setName("");
     setTopic("");
     setVisibility("public");
     setSelected([]);
     setPeopleQuery("");
+  }
+  function saveMessageNote(m: TeamMessage) {
+    void act(async () => {
+      await post("/chat/rooms/" + m.room_id + "/notes", {
+        title:
+          m.text
+            .replace(/[#*_`]/g, "")
+            .split("\n")[0]
+            .slice(0, 100) || "Discussion note",
+        content:
+          m.text +
+          "\n\n[Source message](/?room=" +
+          m.room_id +
+          "&thread=" +
+          (m.parent_id || m.id) +
+          ")",
+      });
+      toast.success("Saved to channel Notes.");
+    });
+  }
+  function proposeChannel(proposal?: ChannelSuggestion) {
+    startCreate("channel");
+    setVisibility("private");
+    if (proposal) {
+      setName(proposal.name);
+      setTopic(proposal.topic);
+      setCreateBrief(proposal.brief);
+      setSuggestion(proposal);
+    }
   }
   if (signedIn === false) return <Login onLogin={() => void refresh()} />;
   if (!workspace)
@@ -589,6 +639,42 @@ export function TeamWorkspaceApp({
         New message
       </Button>
       <nav className="team-nav" aria-label="Conversations">
+        {!!workspace.casual?.enabled && (
+          <button
+            className={"team-room-link" + (current?.casual ? " selected" : "")}
+            disabled={busy}
+            onClick={() =>
+              void act(async () => {
+                const r = await post<{ id: string }>("/chat/casual/open");
+                await refresh();
+                choose(r.id);
+              })
+            }
+          >
+            <MessageSquare />
+            <span>Casual chat</span>
+          </button>
+        )}
+        {workspace.rooms
+          .filter(
+            (r) =>
+              r.casual &&
+              (!workspace.casual?.enabled ||
+                !r.members.some((p) => p.id === workspace.casual?.bot_id)),
+          )
+          .map((r) => (
+            <button
+              key={r.id}
+              className="team-room-link"
+              onClick={() => choose(r.id)}
+            >
+              <MessageSquare />
+              <span>
+                Casual ·{" "}
+                {r.members.find((p) => p.kind === "bot")?.name || "History"}
+              </span>
+            </button>
+          ))}
         <div className="team-nav-label">
           <span>Channels</span>
           <Button
@@ -643,7 +729,7 @@ export function TeamWorkspaceApp({
           </Button>
         </div>
         {workspace.rooms
-          .filter((r) => r.kind !== "channel" && r.joined)
+          .filter((r) => r.kind !== "channel" && !r.casual && r.joined)
           .map((r) => (
             <button
               key={r.id}
@@ -759,7 +845,7 @@ export function TeamWorkspaceApp({
               ))}
             <button
               onClick={() => {
-                if (current) {
+                if (current && !current.casual) {
                   setName(current.name);
                   setTopic(current.topic);
                   setDetails(true);
@@ -797,7 +883,7 @@ export function TeamWorkspaceApp({
               variant="ghost"
               size="icon-sm"
               aria-label="Conversation members"
-              disabled={!current}
+              disabled={!current || !!current.casual}
               onClick={() => {
                 setName(current?.name || "");
                 setTopic(current?.topic || "");
@@ -825,8 +911,48 @@ export function TeamWorkspaceApp({
             </Button>
           </div>
         </header>
+        {current?.kind === "channel" && !focusedThread && (
+          <nav className="channel-tabs" aria-label="Channel sections">
+            {["chat", "notes", "files", "issues", "timer"].map((tab) => (
+              <button
+                key={tab}
+                aria-current={channelTab === tab ? "page" : undefined}
+                onClick={() => {
+                  setChannelTab(tab);
+                  setThreadId(null);
+                }}
+              >
+                {tab === "chat"
+                  ? "Chat"
+                  : tab === "notes"
+                    ? "Notes"
+                    : tab === "files"
+                      ? "Files"
+                      : tab === "issues"
+                        ? "Issues"
+                        : "Timer"}
+              </button>
+            ))}
+          </nav>
+        )}
+        {!!current?.casual && (
+          <CasualSuggestions
+            key={roomId}
+            roomId={roomId}
+            revision={page.latest}
+            onCreate={proposeChannel}
+          />
+        )}
         <div className="team-conversation-layout">
-          <section className="team-channel" aria-label="Channel messages">
+          <section
+            className="team-channel"
+            style={
+              current?.kind === "channel" && channelTab !== "chat"
+                ? { display: "none" }
+                : undefined
+            }
+            aria-label="Channel messages"
+          >
             {current ? (
               <>
                 {loading || loadedRoom !== roomId ? (
@@ -840,6 +966,11 @@ export function TeamWorkspaceApp({
                     onOlder={() => void older()}
                     onThread={openThread}
                     onChange={() => latestRefresh.current()}
+                    onSaveNote={
+                      current.kind === "channel" && current.joined
+                        ? saveMessageNote
+                        : undefined
+                    }
                     unreadAfter={unreadAnchor}
                   />
                 ) : (
@@ -856,7 +987,16 @@ export function TeamWorkspaceApp({
                     </EmptyHeader>
                   </Empty>
                 )}
-                {current.joined ? (
+                {current.casual &&
+                (!workspace.casual?.enabled ||
+                  !current.members.some(
+                    (p) => p.id === workspace.casual?.bot_id,
+                  )) ? (
+                  <p className="project-help p-4">
+                    This Casual chat is archived. Enable its assigned agent in
+                    workspace settings to continue.
+                  </p>
+                ) : current.joined ? (
                   <ChatComposer
                     key={roomId}
                     roomId={roomId}
@@ -895,6 +1035,15 @@ export function TeamWorkspaceApp({
               </Empty>
             )}
           </section>
+          {current?.kind === "channel" && (
+            <ChannelSections
+              key={roomId}
+              tab={channelTab}
+              room={current}
+              workspace={workspace}
+              onThread={(id) => choose(roomId, id)}
+            />
+          )}
           <AnimatePresence initial={false} onExitComplete={afterThreadClose}>
             {threadId && current && (
               <ThreadPanel
@@ -935,6 +1084,11 @@ export function TeamWorkspaceApp({
                       onOlder={() => void older(true)}
                       onThread={() => {}}
                       onChange={() => latestRefresh.current()}
+                      onSaveNote={
+                        current.kind === "channel" && current.joined
+                          ? saveMessageNote
+                          : undefined
+                      }
                       thread
                     />
                   ) : (
@@ -960,6 +1114,7 @@ export function TeamWorkspaceApp({
         <>
           <UsageDialog open={usage} onOpenChange={setUsage} roomId={roomId} />
           <ChannelWorkbench
+            key={roomId}
             open={workbench}
             onOpenChange={setWorkbench}
             room={current}
@@ -977,7 +1132,7 @@ export function TeamWorkspaceApp({
           if (!v) setCreate(null);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="channel-create-dialog sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               {create === "channel" ? "Create channel" : "New message"}
@@ -992,22 +1147,42 @@ export function TeamWorkspaceApp({
             onSubmit={(e) => {
               e.preventDefault();
               void act(async () => {
-                const result = await post<{ id: string }>(
-                  "/chat/rooms",
-                  create === "channel"
-                    ? {
-                        kind: "channel",
-                        name,
-                        topic,
-                        private: visibility === "private",
-                        members: selected,
-                      }
-                    : {
-                        kind: selected.length === 1 ? "dm" : "group",
-                        members: selected,
-                        name: selected.length > 1 ? name : "",
-                      },
-                );
+                const result = createdRoom
+                  ? { id: createdRoom }
+                  : await post<{ id: string }>(
+                      "/chat/rooms",
+                      create === "channel"
+                        ? {
+                            id: createRequest.current,
+                            kind: "channel",
+                            name,
+                            topic,
+                            private: visibility === "private",
+                            members: selected,
+                          }
+                        : {
+                            kind: selected.length === 1 ? "dm" : "group",
+                            members: selected,
+                            name: selected.length > 1 ? name : "",
+                          },
+                    );
+                setCreatedRoom(result.id);
+                if (create === "channel") {
+                  if (admin) await applyResources(result.id, resources);
+                  if (createBrief.trim() && !briefSaved.current) {
+                    await post("/chat/rooms/" + result.id + "/notes", {
+                      title: "Project brief",
+                      requestId: briefRequest.current,
+                      content: createBrief,
+                    });
+                    briefSaved.current = true;
+                  }
+                  if (suggestion)
+                    await api(
+                      "/chat/rooms/" + roomId + "/suggestions/" + suggestion.id,
+                      { method: "DELETE" },
+                    );
+                }
                 await refresh();
                 setCreate(null);
                 choose(result.id);
@@ -1021,6 +1196,7 @@ export function TeamWorkspaceApp({
                     <FieldLabel htmlFor="channel-name">Channel name</FieldLabel>
                     <Input
                       id="channel-name"
+                      disabled={!!createdRoom}
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       required
@@ -1033,6 +1209,7 @@ export function TeamWorkspaceApp({
                     <FieldLabel htmlFor="channel-topic">Topic</FieldLabel>
                     <Input
                       id="channel-topic"
+                      disabled={!!createdRoom}
                       value={topic}
                       onChange={(e) => setTopic(e.target.value)}
                       maxLength={200}
@@ -1045,7 +1222,9 @@ export function TeamWorkspaceApp({
                     <Choice
                       id="channel-visibility"
                       value={visibility}
-                      onChange={setVisibility}
+                      onChange={(v) => {
+                        if (!createdRoom) setVisibility(v);
+                      }}
                       options={[
                         {
                           value: "public",
@@ -1076,6 +1255,50 @@ export function TeamWorkspaceApp({
                   )}
                 </>
               )}
+              {create === "channel" && (
+                <>
+                  {(createBrief || current?.casual) && (
+                    <Field>
+                      <FieldLabel htmlFor="channel-brief">
+                        Project brief · saved to Notes
+                      </FieldLabel>
+                      <Textarea
+                        id="channel-brief"
+                        value={createBrief}
+                        onChange={(e) => setCreateBrief(e.target.value)}
+                        rows={5}
+                        maxLength={20000}
+                      />
+                    </Field>
+                  )}
+                  {admin && (
+                    <details className="channel-resource-options">
+                      <summary>GitHub repository & Cloudflare Workers</summary>
+                      <ResourceFields
+                        value={resources}
+                        onChange={setResources}
+                      />
+                    </details>
+                  )}
+                  {createdRoom && (
+                    <p className="project-help">
+                      Channel created. Complete resource setup and save again,
+                      or{" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void refresh();
+                          setCreate(null);
+                          choose(createdRoom);
+                        }}
+                      >
+                        open the channel now
+                      </button>
+                      .
+                    </p>
+                  )}
+                </>
+              )}
               {(create === "message" || visibility === "private") && (
                 <Field>
                   <FieldLabel htmlFor="people-query">People</FieldLabel>
@@ -1102,6 +1325,7 @@ export function TeamWorkspaceApp({
                           variant={
                             selected.includes(p.id) ? "secondary" : "ghost"
                           }
+                          disabled={!!createdRoom}
                           aria-pressed={selected.includes(p.id)}
                           className="select-person"
                           onClick={() =>

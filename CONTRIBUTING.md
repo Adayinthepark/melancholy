@@ -19,8 +19,8 @@ npm run test:e2e
 npm run build
 ```
 
-Install Chromium with `npx playwright install chromium` before browser tests.
-Use `npx playwright install --with-deps chromium` on a fresh Linux runner.
+Install Chromium and WebKit with `npx playwright install chromium webkit` before browser tests.
+Use `npx playwright install --with-deps chromium webkit` on a fresh Linux runner.
 Browser tests use the key in your local `.dev.vars`; no live agent credentials
 are required. Never include real prompts, tokens or connector journals in a PR.
 

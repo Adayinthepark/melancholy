@@ -138,7 +138,7 @@ separate. [Cloudflare pricing](https://developers.cloudflare.com/workers/platfor
 npm run typecheck
 npm test
 npm run test:connector
-npx playwright install chromium
+npx playwright install chromium webkit
 npm run test:e2e
 npm run build
 ```

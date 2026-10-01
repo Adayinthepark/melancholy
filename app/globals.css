@@ -3134,6 +3134,8 @@ button.chat-file,
 .agent-action-dot {
   --action-color: var(--muted-foreground);
   flex: 0 0 8px;
+  /* WebKit needs an explicit width when sizing the wrapping button content. */
+  width: 8px;
   height: 8px;
   margin-inline-start: -3px;
   border: 1px solid var(--background);

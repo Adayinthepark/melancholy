@@ -86,6 +86,7 @@ import { Login } from "./login";
 import { ChatTimeline } from "./chat-timeline";
 import { ChatComposer } from "./chat-composer";
 import { AgentProgress } from "./agent-progress";
+import { ChatFileDrop } from "./chat-file-drop";
 import { TeamSettings, Choice } from "./team-settings";
 const emptyPage: MessagePage = { messages: [], hasMore: false, latest: 0 };
 export function roomName(room: Room, me: string) {
@@ -1049,61 +1050,65 @@ export function TeamWorkspaceApp({
                       animate={{ opacity: 1 }}
                       transition={{ duration: reducedMotion ? 0 : 0.14 }}
                     >
-                      {root &&
-                      root.id === threadId &&
-                      root.room_id === roomId ? (
-                        <ChatTimeline
-                          messages={[root, ...visibleReplies]}
-                          onRetry={retryMessage}
-                          me={me}
-                          hasMore={replies.hasMore}
-                          onOlder={() => void older(true)}
-                          onThread={() => {}}
-                          onChange={() => latestRefresh.current()}
-                          onSaveNote={
-                            current.kind === "channel" && current.joined
-                              ? saveMessageNote
-                              : undefined
-                          }
-                          onRead={
-                            !inboxOpen && current.joined
-                              ? markVisible
-                              : undefined
-                          }
-                          focusMessage={focusMessage}
-                          hasNewer={replies.hasNewer}
-                          onLatest={() => choose(roomId, threadId)}
-                          thread
-                        />
-                      ) : (
-                        <MessagesSkeleton />
-                      )}
-                      {current.joined && (
-                        <ChatComposer
-                          key={roomId + threadId}
-                          roomId={roomId}
-                          parentId={threadId}
-                          people={current.members}
-                          label="Reply in thread"
-                          progress={
-                            <AgentProgress
-                              messages={[
-                                ...(root?.id === threadId ? [root] : []),
-                                ...visibleReplies,
-                              ]}
-                              onChange={() => latestRefresh.current()}
-                            />
-                          }
-                          onSend={sendDraft}
-                        />
-                      )}
+                      <ChatFileDrop contextKey={roomId + threadId}>
+                        {root &&
+                        root.id === threadId &&
+                        root.room_id === roomId ? (
+                          <ChatTimeline
+                            messages={[root, ...visibleReplies]}
+                            onRetry={retryMessage}
+                            me={me}
+                            hasMore={replies.hasMore}
+                            onOlder={() => void older(true)}
+                            onThread={() => {}}
+                            onChange={() => latestRefresh.current()}
+                            onSaveNote={
+                              current.kind === "channel" && current.joined
+                                ? saveMessageNote
+                                : undefined
+                            }
+                            onRead={
+                              !inboxOpen && current.joined
+                                ? markVisible
+                                : undefined
+                            }
+                            focusMessage={focusMessage}
+                            hasNewer={replies.hasNewer}
+                            onLatest={() => choose(roomId, threadId)}
+                            thread
+                          />
+                        ) : (
+                          <MessagesSkeleton />
+                        )}
+                        {current.joined && (
+                          <ChatComposer
+                            key={roomId + threadId}
+                            roomId={roomId}
+                            parentId={threadId}
+                            people={current.members}
+                            label="Reply in thread"
+                            progress={
+                              <AgentProgress
+                                messages={[
+                                  ...(root?.id === threadId ? [root] : []),
+                                  ...visibleReplies,
+                                ]}
+                                onChange={() => latestRefresh.current()}
+                              />
+                            }
+                            onSend={sendDraft}
+                          />
+                        )}
+                      </ChatFileDrop>
                     </motion.div>
                   </ThreadPanel>
                 )}
               </AnimatePresence>
             }
           >
-            <section
+            <ChatFileDrop
+              contextKey={roomId}
+              role="region"
               className="team-channel"
               style={
                 current?.kind === "channel" && channelTab !== "chat"
@@ -1206,7 +1211,7 @@ export function TeamWorkspaceApp({
                   </Button>
                 </Empty>
               )}
-            </section>
+            </ChatFileDrop>
             {current?.kind === "channel" && (
               <ChannelSections
                 key={roomId}

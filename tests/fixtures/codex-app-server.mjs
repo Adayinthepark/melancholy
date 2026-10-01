@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Local integration fixture: deterministic CLI protocol, never used in production.
 import { createInterface } from "node:readline";
-import { writeFile } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 const send = (value) => process.stdout.write(JSON.stringify(value) + "\n");
 const threadId = "fixture-session",
@@ -14,6 +14,17 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   if (message.method === "thread/start" || message.method === "thread/resume")
     send({ id: message.id, result: { thread: { id: threadId } } });
   if (message.method === "turn/start") {
+    const prompt = message.params.input
+      .map((part) => part.text || "")
+      .join("\n");
+    const attached = prompt.match(/Attached files \(local paths\):\n([^\n]+)/);
+    if (attached) {
+      const file = await readFile(attached[1]);
+      await writeFile(
+        join(process.cwd(), "attachment-read.txt"),
+        String(file.length),
+      );
+    }
     send({ id: message.id, result: { turn: { id: turnId } } });
     send({
       method: "item/completed",

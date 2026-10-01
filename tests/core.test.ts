@@ -9,6 +9,7 @@ import {
 } from "cloudflare:test";
 import { handleApi } from "../worker/api";
 import { hash } from "../worker/auth";
+import { jobEnvironment, repositoryContext } from "../worker/integrations";
 
 const base = "https://workspace.test";
 beforeAll(async () => {
@@ -177,7 +178,7 @@ describe("workspace access", () => {
   });
   it("keeps attachments private and scopes connector downloads to their server", async () => {
     const cookie = await login();
-    const { input } = await createRoom();
+    const { input, room } = await createRoom();
     const token = "d".repeat(64);
     await env.DB.prepare("UPDATE servers SET token_hash=? WHERE id=?")
       .bind(await hash(token), input.serverId)
@@ -244,6 +245,32 @@ describe("workspace access", () => {
         )
       ).status,
     ).toBe(404);
+    // The CLI's short-lived task identity can fetch earlier attachments too.
+    const run = await room.send(input);
+    const variables = await jobEnvironment(
+      input.serverId,
+      input.threadId,
+      run.id,
+      base,
+    );
+    const taskFile = () =>
+      handleApi(
+        new Request(file, {
+          headers: {
+            Authorization: `Bearer ${variables.MELANCHOLY_API_TOKEN}`,
+          },
+        }),
+      );
+    expect(await (await taskFile()).text()).toBe("private attachment");
+    const context = await repositoryContext("general", messageId);
+    expect(context).toContain(id);
+    expect(context).toContain("/api/files/FILE_ID");
+    await env.DB.prepare("UPDATE chat_messages SET deleted_at=? WHERE id=?")
+      .bind(Date.now(), messageId)
+      .run();
+    expect((await taskFile()).status).toBe(404);
+    await room.cancel(run.id);
+    expect((await taskFile()).status).toBe(401);
   });
 });
 describe("durable conversation", () => {

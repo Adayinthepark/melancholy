@@ -24,6 +24,7 @@ import {
 } from "./artifacts.mjs";
 import { agentEnvironment, redactor } from "./environment.mjs";
 import { killTree } from "./process.mjs";
+import { downloadAttachments } from "./attachments.mjs";
 
 const { values: flags } = parseArgs({
   options: {
@@ -93,6 +94,7 @@ let ws = null,
   reconnectTimer = null;
 const processes = new Map();
 const sessions = new Map();
+const preparations = new Map();
 const waiting = [];
 let workerBusy = false;
 const ackWaiters = new Map();
@@ -138,40 +140,26 @@ for (const job of Object.values(state.jobs))
   }
 save();
 
-async function download(job) {
-  const dir = join(stateDir, "attachments", job.id);
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const paths = [];
-  for (const file of job.attachments || []) {
-    if (!/^[a-f0-9-]{36}$/.test(file.id))
-      throw new Error("Invalid attachment ID.");
-    const response = await fetch(new URL(`/api/files/${file.id}`, base), {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!response.ok)
-      throw new Error(`Attachment download failed (${response.status}).`);
-    const data = new Uint8Array(await response.arrayBuffer());
-    if (data.length > 10 * 1024 * 1024)
-      throw new Error("Attachment exceeds 10 MB.");
-    const name =
-      file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "attachment";
-    const path = join(dir, `${file.id}-${name}`);
-    writeFileSync(path, data, { mode: 0o600 });
-    paths.push(path);
-  }
-  return paths;
-}
 async function run(job) {
   const record = state.jobs[job.id];
   if (record.status === "cancelled") return;
   record.status = "running";
   save();
+  const preparation = new AbortController();
+  preparations.set(job.id, preparation);
   let redact = (value) => value;
   try {
     await emit(job.id, { type: "started" });
     if (record.status === "cancelled") return;
-    const files = await download(job);
+    const files = await downloadAttachments(job, {
+      stateDir,
+      base,
+      token,
+      signal: preparation.signal,
+      onActivity: (event) => {
+        void emit(job.id, event);
+      },
+    });
     if (record.status === "cancelled" || stopping) return;
     const { command, args } = interactiveCommand(
       runtime,
@@ -188,9 +176,16 @@ async function run(job) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ threadId: job.threadId, runId: job.id }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.any([
+          preparation.signal,
+          AbortSignal.timeout(30000),
+        ]),
       },
-    );
+    ).catch((error) => {
+      throw new Error(
+        `Agent startup credentials could not be loaded: ${error.message}. The agent did not start.`,
+      );
+    });
     if (!environmentResponse.ok)
       throw new Error(
         `Task credentials unavailable (${environmentResponse.status}).`,
@@ -373,12 +368,15 @@ async function run(job) {
     save();
     console.log(`${job.id} ${record.status}`);
   } catch (error) {
+    if (record.status === "cancelled" || stopping) return;
     record.status = "failed";
     save();
     await emit(job.id, {
       type: "failed",
       error: redact(String(error.message || error)).slice(0, 2000),
     });
+  } finally {
+    preparations.delete(job.id);
   }
 }
 async function schedule() {
@@ -465,6 +463,7 @@ function connect() {
       if (record) {
         record.status = "cancelled";
         save();
+        preparations.get(packet.jobId)?.abort();
         const child = processes.get(packet.jobId);
         if (child) killTree(child);
         else void emit(packet.jobId, { type: "cancelled" });
@@ -498,6 +497,7 @@ function shutdown() {
   ready = false;
   clearInterval(heartbeat);
   clearTimeout(reconnectTimer);
+  for (const controller of preparations.values()) controller.abort();
   for (const child of processes.values()) killTree(child);
   save();
   ws?.close();

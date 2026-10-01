@@ -61,6 +61,26 @@ The journal is stored under `~/.local/state/melancholy/` by default. Preserve it
 across restarts to retain received-job deduplication. It contains conversation
 output and should be treated as private data.
 
+### Attachment downloads
+
+Before starting the CLI, the connector downloads the message's attachments from
+the private file API using the server bot's channel membership. Files are capped
+at 10 MB, checked against their expected size, and atomically saved with private
+permissions. The CLI receives their local paths; it does not need R2 credentials.
+
+Each download has a 60-second deadline covering headers and body. Network failures,
+timeouts, HTTP 408/429 and 5xx responses retry up to three total attempts. HTTP
+401/403/404 and oversized files fail without retry. Download/retry/failure details
+appear in the action list. Stop also aborts pending downloads. An exhausted failure
+names the file and states that the agent has not started.
+
+During an active task, the CLI may also download earlier attachments from the
+same conversation with `GET $MELANCHOLY_URL/api/files/FILE_ID` and
+`Authorization: Bearer $MELANCHOLY_API_TOKEN`. The thread context includes the
+opening message's attachment IDs, so continuing a failed first turn does not
+require re-uploading. The token expires with the task; drafts, deleted messages,
+and inaccessible conversations remain unavailable.
+
 ## Run as a service
 
 Use a dedicated server account with access to the project and its CLI login.

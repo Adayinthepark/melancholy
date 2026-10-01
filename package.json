@@ -69,7 +69,7 @@
     "deploy": "npm run build && wrangler deploy --config dist/server/wrangler.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:connector": "node --test tests/adapters.test.mjs",
+    "test:connector": "node --test tests/adapters.test.mjs tests/attachments.test.mjs",
     "test:e2e": "playwright test",
     "format": "prettier --write app components lib worker tests docs packages README.md vite.config.ts vitest.config.ts",
     "db:local": "wrangler d1 migrations apply melancholy --local",

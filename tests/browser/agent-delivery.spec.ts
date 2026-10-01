@@ -376,12 +376,12 @@ test("real connector transport interleaves actions, persists deliveries and roun
   }
 });
 
-test("the connector process collects actual generated files before completing its task", async ({
+test("the connector process downloads attachments before startup and collects generated files", async ({
   page,
   context,
 }) => {
   test.setTimeout(60000);
-  const { mkdtemp, mkdir, copyFile, chmod, rm } =
+  const { mkdtemp, mkdir, copyFile, chmod, rm, readFile } =
     await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join, resolve } = await import("node:path");
@@ -440,6 +440,21 @@ test("the connector process collects actual generated files before completing it
     const person = (
       await (await context.request.get("/api/chat/workspace")).json()
     ).people.find((p: any) => p.id === server.id);
+    const inputFile = await context.request.post(
+      `/api/chat/files?room=${room.id}`,
+      {
+        headers,
+        multipart: {
+          file: {
+            name: "apartment.html",
+            mimeType: "text/html",
+            buffer: Buffer.alloc(3823680, 120),
+          },
+        },
+      },
+    );
+    expect(inputFile.status()).toBe(201);
+    const attachment = await inputFile.json();
     const response = await context.request.post(
       `/api/chat/rooms/${room.id}/messages`,
       {
@@ -447,6 +462,7 @@ test("the connector process collects actual generated files before completing it
         data: {
           id: crypto.randomUUID(),
           text: `@${person.handle} Produce documents`,
+          attachments: [attachment.id],
         },
       },
     );
@@ -454,6 +470,9 @@ test("the connector process collects actual generated files before completing it
     await page.goto(`/?room=${room.id}&thread=${root.id}`);
     const approval = page.getByRole("region", { name: "Approve command" });
     await expect(approval).toBeVisible({ timeout: 20000 });
+    expect(await readFile(join(fixture, "attachment-read.txt"), "utf8")).toBe(
+      "3823680",
+    );
     await approval.getByRole("radio", { name: /Decline/ }).check();
     await approval
       .getByRole("button", { name: "Send answer", exact: true })
@@ -473,9 +492,10 @@ test("the connector process collects actual generated files before completing it
     const files = await (
       await context.request.get(`/api/chat/rooms/${room.id}/files`)
     ).json();
-    expect(files.files).toHaveLength(1);
+    expect(files.files).toHaveLength(2);
     const downloaded = await context.request.get(
-      "/api/files/" + files.files[0].id,
+      "/api/files/" +
+        files.files.find((file: any) => file.name === "generated.csv").id,
     );
     expect(await downloaded.text()).toBe("name,value\nfixture,42\n");
   } finally {
